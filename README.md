@@ -1,95 +1,104 @@
 # GitHub Profile Analyzer
 
-A serverless webb app built with Cloudflare Workers to fetch and visualize GitHub user data. This tool helps developers understand their GitHub presence through visualizations, badge tracking, and AI-powered analysis.
+GitHub Profile Analyzer is a serverless web app (Cloudflare Worker) that provides deep insights into any GitHub user's activity, achievements, and contribution patterns. It exposes a set of robust API endpoints for badge detection, contribution heatmaps, rate-limit aggregation, and AI-powered analysis, all in a single deployable file (`worker.js`).
 
-## Features
-- Aggregate GitHub API rate-limit status across multiple tokens
-- Generate a contribution calendar as an SVG heatmap
-- Expose achievement badges as JSON
-- CORS-protected endpoints with configurable origin
-- Built-in caching for performance
-- Integrated Cerebras AI LLM (Llama 4) with a complete UI
-- Token rotation for higher API request limits
-- Responsive SVG rendering for contributions
+---
 
-## Setup
-1. Clone this repository:
-   ```powershell
-   git clone https://github.com/0xarchit/github-profile-analyzer.git
-   cd "github-profile-analyser"
-   ```
-2. Install Wrangler CLI:
-   ```powershell
-   npm install -g @cloudflare/wrangler
-   ```
-3. Create or update `wrangler.toml` with your variables:
-   ```toml
-   name = "github-profile-analyzer"
-   type = "javascript"
+## Important Highlights
 
-   [vars]
-   GITHUB_TOKENS = "token1,token2"
-   CEREBRAS_KEYS  = "key1,key2"
-   FRONTEND_ORIGIN = "https://your-frontend.example.com"
-   ```
-4. Publish to Cloudflare:
-   ```powershell
-   wrangler publish
-   ```
+- **Local Storage Caching:** All API responses are cached in the browser's local storage for 1 hour, minimizing redundant requests and improving performance for repeat visits.
+- **Repository Limit:** Only the first 100 repositories (sorted by GitHub's default order) are processed for contribution and badge analysis, ensuring fast response times.
+- **Fork Filtering:** For forked repositories, only those in which the user has made at least one commit are included in the analysis. This ensures the stats and graphs reflect the user's actual contributions, not just forks with no activity.
 
-## Workflow
-Below is a simplified flowchart of how the main `worker.js` handles incoming requests:
+## Features (Detailed)
 
-```mermaid
-flowchart LR
-    A[Client: Browser or App] --> B[Cloudflare Worker: fetch event]
-    B --> C{Route Path}
-    C -->|"/"| D[Serve Frontend HTML]
-    C -->|"/rate_limit"| E[Fetch & Aggregate Rate Limits]
-    C -->|"/contributions"| F[Generate SVG Heatmap]
-    C -->|"/api"| G[Compose JSON Response]
-    D & E & F & G --> H[Return Response]
-    H --> A
-```
+### 1. **GitHub API Rate-Limit Aggregation**
+- Rotates through multiple GitHub API tokens to maximize available requests.
+- Aggregates and exposes the current rate-limit status for all tokens via a single endpoint.
+- Ensures high reliability for heavy/automated usage.
 
-## API Endpoints
+### 2. **Contribution Calendar SVG Heatmap**
+- Fetches a user's public contribution data using the GitHub GraphQL API.
+- Generates a responsive SVG heatmap, visually representing daily contributions with intensity-based coloring.
+- Output is suitable for direct embedding in dashboards or web UIs.
 
-| Endpoint | Description |
-|----------|-------------|
-| `/` | Serves the frontend HTML interface |
-| `/rate_limit` | Returns GitHub API rate-limit status across all tokens |
-| `/contributions` | Generates SVG heatmap of user contributions |
-| `/api` | Complete JSON response including badges, contributions, and profile data |
+### 3. **Achievement Badge Detection**
+- Maintains a complete, up-to-date list of all official GitHub achievement badges and their asset URLs.
+- Uses efficient HTTP HEAD requests to check which badges a user has unlocked (no scraping or login required).
+- Returns badge status as JSON for easy integration.
 
-## How It Works
+### 4. **CORS & Security**
+- All endpoints are CORS-protected, allowing only requests from a configurable frontend origin.
+- Supports secure deployment and integration with any frontend or automation tool.
 
-The worker uses a combination of GitHub REST API calls and specialized techniques:
+### 5. **Built-in Caching**
+- Caches API responses for improved performance and reduced API usage.
+- Smart cache invalidation ensures up-to-date data without excessive requests.
 
-1. **Badge Detection**: Uses HEAD requests to GitHub achievement URLs to determine which badges a user has unlocked
-2. **Rate Limit Management**: Distributes requests across multiple GitHub tokens to maximize available API calls
-3. **Contribution Visualization**: Converts GitHub contribution data into an interactive SVG heatmap
-4. **AI Analysis**: Leverages Cerebras Llama 4 LLM to analyze contribution patterns and provide insights
+### 6. **AI-Powered Analysis (Cerebras Llama 4)**
+- Integrates with Cerebras Llama 4 LLM for advanced, contextual analysis of user contribution patterns.
+- Provides natural language summaries and insights about a user's GitHub activity.
 
-## Architecture
+### 7. **Unified API**
+- All features are accessible via a single Cloudflare Worker (`worker.js`).
+- Simple, RESTful endpoints for frontend, automation, or data analysis use.
 
-The project is organized with separate modules for better code organization:
+---
 
-### worker.js (Main Service)
-This is the standalone Cloudflare Worker that combines all capabilities into a single deployable service. It handles all API routes, authentication, caching, and CORS policies. The worker.js file is what you deploy to Cloudflare.
+## Complete Workflow & How It Works
 
-### badge.js (Badge Detection Logic)
-A reference implementation showing how GitHub achievement badges are detected:
-- Contains the complete list of achievement badge assets and their URLs
-- Implements the `checkAchievementStatus()` function that makes HEAD requests to GitHub
-- Can be tested independently for badge detection functionality
+1. **Request Handling**
+    - The Cloudflare Worker listens for all incoming HTTP requests.
+    - Each request is routed based on its path:
+        - `/` : Serves a built-in HTML frontend (for demo/testing).
+        - `/rate_limit` : Aggregates and returns the rate-limit status for all GitHub tokens.
+        - `/contributions?user=USERNAME` : Fetches and returns the SVG heatmap for the specified user.
+        - `/api?user=USERNAME` : Returns a complete JSON object with badges, contributions, and profile data for the user.
 
-### contri-graph.js (Contribution Graph Generator)
-A reference implementation showing how the contribution SVG is generated:
-- Uses GitHub GraphQL API to fetch a user's contribution calendar
-- Implements SVG generation with responsive sizing
-- Creates a heatmap visualization with intensity-based coloring
-- Can be run independently to test SVG generation
+2. **Badge Detection**
+    - For each known GitHub achievement badge, the worker issues a HEAD request to the badge's achievement URL for the target user.
+    - If the badge is unlocked, the response is 200 OK; otherwise, it's a 404.
+    - The worker compiles a list of unlocked badges and their asset URLs.
+
+3. **Contribution Heatmap Generation**
+    - The worker queries the GitHub GraphQL API for the user's public contribution calendar.
+    - It processes the data and generates a responsive SVG heatmap, with color intensity mapped to contribution count.
+
+4. **Rate-Limit Aggregation**
+    - The worker rotates through all configured GitHub tokens, querying the rate-limit endpoint for each.
+    - It aggregates the remaining/used limits and exposes the data as a single JSON object.
+
+5. **AI Analysis (Optional)**
+    - If enabled and API keys are provided, the worker sends contribution data to the Cerebras Llama 4 LLM.
+    - The LLM returns a natural language summary or insight about the user's activity.
+
+6. **CORS & Caching**
+    - All responses include CORS headers, allowing only the configured frontend origin.
+    - Frequently requested data is cached for performance and API efficiency.
+
+---
+
+## API Endpoints (Summary)
+
+| Endpoint                | Description                                                      |
+|-------------------------|------------------------------------------------------------------|
+| `/`                     | Serves the built-in HTML frontend                                |
+| `/rate_limit`           | Returns GitHub API rate-limit status for all tokens              |
+| `/contributions?user=`  | Returns SVG heatmap of the user's contributions                  |
+| `/api?user=`            | Returns JSON with badges, contributions, and profile data        |
+
+---
+
+## Setup (Quick Start)
+
+1. **Copy `worker.js` to your Cloudflare Worker project.**
+2. **Open `worker.js` and fill in your GitHub API tokens and Cerebras API keys:**
+    - Replace the `githubTokens` and `cerebrasKeys` arrays with your actual keys.
+    - Set the `FRONTEND_ORIGIN` variable to your frontend's URL.
+3. **Deploy the worker using Cloudflare's dashboard or Wrangler CLI.**
+
+---
 
 ## License
 
-see [LICENSE](LICENSE) file.
+See [LICENSE](LICENSE) file.
