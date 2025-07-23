@@ -9,6 +9,8 @@ GitHub Profile Analyzer is a serverless web app (Cloudflare Worker) that provide
 - **Local Storage Caching:** All API responses are cached in the browser's local storage for 1 hour, minimizing redundant requests and improving performance for repeat visits.
 - **Repository Limit:** Only the first 100 repositories (sorted by GitHub's default order) are processed for contribution and badge analysis, ensuring fast response times.
 - **Fork Filtering:** For forked repositories, only those in which the user has made at least one commit are included in the analysis. This ensures the stats and graphs reflect the user's actual contributions, not just forks with no activity.
+- **Permanent Page URLs:** Each analyzed profile can be accessed via a unique, shareable URL, allowing you to revisit or share the analysis page at any time.
+- **Download & Print to PDF:** The analysis page can be downloaded or saved as a PDF (using your browser's "Print to PDF" feature) for offline viewing or sharing.
 
 ## Features (Detailed)
 
