@@ -1,0 +1,40 @@
+import { type ReactNode, createContext, useContext } from "react";
+import { theme as defaultTheme } from "./pdfx-theme";
+
+type PdfxTheme = typeof defaultTheme;
+
+export const PdfxThemeContext = createContext<PdfxTheme>(defaultTheme);
+
+export interface PdfxThemeProviderProps {
+  theme?: PdfxTheme;
+  children: ReactNode;
+}
+
+export function PdfxThemeProvider({ theme, children }: PdfxThemeProviderProps) {
+  const resolvedTheme = theme ?? defaultTheme;
+  return (
+    <PdfxThemeContext.Provider value={resolvedTheme}>
+      {children}
+    </PdfxThemeContext.Provider>
+  );
+}
+
+export function usePdfxTheme(): PdfxTheme {
+  try {
+    return useContext(PdfxThemeContext);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /invalid hook call|useContext|cannot read properties of null/i.test(
+        error.message,
+      )
+    ) {
+      return defaultTheme;
+    }
+    throw error;
+  }
+}
+
+export function useSafeMemo<T>(factory: () => T): T {
+  return factory();
+}
