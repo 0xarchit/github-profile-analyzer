@@ -58,8 +58,17 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
     };
 
     return (
-      <div ref={ref} className={cn("h-80 w-full", className)} {...props}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div
+        ref={ref}
+        className={cn("h-80 w-full min-w-0", className)}
+        {...props}
+      >
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minWidth={0}
+          minHeight={240}
+        >
           <RechartsLineChart
             data={data}
             margin={{ top: 0, right: 30, left: 0, bottom: 0 }}

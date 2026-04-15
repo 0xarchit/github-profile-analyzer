@@ -46,8 +46,8 @@ function applySecurityHeaders(
   );
   const cspPolicy =
     process.env.NODE_ENV === "production"
-      ? "default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com; font-src 'self' data:;"
-      : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com; font-src 'self' data:;";
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://va.vercel-scripts.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' data: blob: https://api.github.com https://github.com; font-src 'self' data:;"
+      : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://va.vercel-scripts.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' data: blob: https://api.github.com https://github.com; font-src 'self' data:;";
   response.headers.set("Content-Security-Policy", cspPolicy);
   return response;
 }

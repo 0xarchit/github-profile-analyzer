@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, Variants } from "framer-motion";
+import dynamic from "next/dynamic";
 import { PDFExportButton } from "@/components/PDFExportButton";
 import { Header } from "@/components/Header";
-import { StatsDashboard } from "@/components/StatsDashboard";
 import { ScanningInterface } from "@/components/ScanningInterface";
 import {
   Trophy,
@@ -19,6 +18,17 @@ import {
 } from "lucide-react";
 import { AnalysisResult } from "@/types";
 import { fetchAuthIdentity } from "@/lib/client-auth";
+
+const StatsDashboard = dynamic(
+  () =>
+    import("@/components/StatsDashboard").then((mod) => ({
+      default: mod.StatsDashboard,
+    })),
+  {
+    ssr: false,
+    loading: () => <div className="h-96 bg-neo-bg animate-pulse" />,
+  },
+);
 
 interface ProfileClientProps {
   username: string;
@@ -207,34 +217,8 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
   if (!data) return <ScanningInterface />;
 
-  const containerVariants: Variants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
-  };
-
-  const itemVariants: Variants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: {
-        duration: 0.5,
-      },
-    },
-  };
-
   return (
-    <motion.main
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-6 sm:space-y-8 md:space-y-12 lg:space-y-16 w-full max-w-full lg:max-w-7xl mx-auto relative overflow-x-clip protocol-noise"
-    >
+    <main className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-6 sm:space-y-8 md:space-y-12 lg:space-y-16 w-full max-w-full lg:max-w-7xl mx-auto relative overflow-x-clip protocol-noise animate-in fade-in">
       <Header>
         {data && (
           <PDFExportButton
@@ -268,10 +252,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
         )}
       </Header>
 
-      <motion.div
-        variants={itemVariants}
-        className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden"
-      >
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden animate-in fade-in slide-in-from-bottom-4">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="bg-neo-green text-black px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase shadow-neo">
             Identity Verified
@@ -300,12 +281,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
             />
           </div>
         </div>
-      </motion.div>
+      </div>
 
-      <motion.section
-        variants={itemVariants}
-        className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 md:gap-8"
-      >
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 md:gap-8 animate-in fade-in slide-in-from-bottom-4">
         <div className="lg:col-span-4 neo-card bg-neo-yellow flex flex-col items-center justify-center py-6 sm:py-8 md:py-10 lg:py-12 px-3 sm:px-4 relative overflow-hidden border-4 sm:border-6 md:border-8 shadow-neo-lg group">
           <div className="absolute top-2 sm:top-3 md:top-4 left-2 sm:left-3 md:left-4 bg-black text-white px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase border-b border-r sm:border-b-2 sm:border-r-2 border-neo-pink">
             Core Rank
@@ -373,16 +351,13 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
             />
           </div>
         </div>
-      </motion.section>
+      </section>
 
-      <motion.div variants={itemVariants}>
+      <div className="animate-in fade-in slide-in-from-bottom-4">
         <StatsDashboard data={data} />
-      </motion.div>
+      </div>
 
-      <motion.section
-        variants={itemVariants}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full"
-      >
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full animate-in fade-in slide-in-from-bottom-4">
         <div className="neo-card bg-white space-y-4 sm:space-y-5 md:space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all overflow-hidden relative p-4 sm:p-6 md:p-8">
           <div className="absolute top-0 right-0 p-4 opacity-5">
             <Trophy className="w-32 h-32" />
@@ -476,9 +451,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
             ))}
           </div>
         </div>
-      </motion.section>
+      </section>
 
-      <motion.section variants={itemVariants} className="space-y-8">
+      <section className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
         <h3 className="text-4xl font-heading uppercase border-b-8 border-black pb-4 flex items-center gap-3">
           <Zap className="w-10 h-10" />
           Project <span className="text-neo-pink">Ideas</span>
@@ -515,9 +490,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
             </p>
           )}
         </div>
-      </motion.section>
+      </section>
 
-      <motion.section variants={itemVariants} className="space-y-8">
+      <section className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
         <h3 className="text-4xl font-heading uppercase border-b-8 border-black pb-4 flex items-center gap-3">
           <FolderGit className="w-10 h-10" />
           Code Shards <span className="text-neo-blue">Analysis</span>
@@ -565,8 +540,8 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
               </div>
             ))}
         </div>
-      </motion.section>
-    </motion.main>
+      </section>
+    </main>
   );
 }
 

@@ -2,12 +2,23 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PDFExportButton } from "@/components/PDFExportButton";
 import { Header } from "@/components/Header";
-import { StatsDashboard } from "@/components/StatsDashboard";
 import { Trophy, Zap, FolderGit, Star, Clock } from "lucide-react";
 import { AnalysisResult } from "@/types";
 import { ScanningInterface } from "@/components/ScanningInterface";
+
+const StatsDashboard = dynamic(
+  () =>
+    import("@/components/StatsDashboard").then((mod) => ({
+      default: mod.StatsDashboard,
+    })),
+  {
+    ssr: false,
+    loading: () => <div className="h-96 bg-neo-bg animate-pulse" />,
+  },
+);
 
 interface SnapshotClientProps {
   username: string;

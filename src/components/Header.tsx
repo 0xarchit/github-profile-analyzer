@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { motion } from "framer-motion";
 import {
   FolderGit,
   Star,
@@ -116,31 +115,25 @@ export function Header({ children, floating = false }: HeaderProps) {
     : "flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-50 border-b-8 border-black pb-6 md:pb-8 w-full";
 
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className={headerClasses}
+    <header
+      className={`${headerClasses} animate-in fade-in slide-in-from-top-4`}
     >
       <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto *:w-full sm:*:w-auto">
-        <motion.button
-          whileHover={{ scale: 1.05, x: 2, y: 2 }}
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => router.push("/")}
-          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center justify-center gap-2 hover:shadow-neo-active transition-all group border-[3px] text-[10px] md:text-xs"
+          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center justify-center gap-2 hover:shadow-neo-active hover:scale-105 active:scale-95 transition-all group border-[3px] text-[10px] md:text-xs"
         >
           <div className="w-2 h-2 bg-neo-green rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
           <Home className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
           <span className="font-black uppercase tracking-tighter hidden xs:inline">
             GitScore Protocol
           </span>
-        </motion.button>
+        </button>
 
-        <motion.a
-          whileHover={{ scale: 1.05, x: 2, y: 2 }}
-          whileTap={{ scale: 0.95 }}
+        <a
           href="https://github.com/0xarchit/github-profile-analyzer"
           target="_blank"
-          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center justify-center gap-2 hover:shadow-neo-active transition-all group border-[3px]"
+          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center justify-center gap-2 hover:shadow-neo-active hover:scale-105 active:scale-95 transition-all group border-[3px]"
           rel="noopener noreferrer"
           aria-label="Open GitHub repository: github-profile-analyzer (opens in new tab)"
         >
@@ -155,7 +148,7 @@ export function Header({ children, floating = false }: HeaderProps) {
               {repoStars !== null ? repoStars.toLocaleString() : "★"}
             </span>
           </div>
-        </motion.a>
+        </a>
       </div>
 
       <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-3 w-full">
@@ -169,15 +162,13 @@ export function Header({ children, floating = false }: HeaderProps) {
 
         {user ? (
           <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
-            <motion.button
-              whileHover={{ scale: 1.05, x: 2, y: 2 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={() => router.push("/settings")}
-              className="neo-button py-2 px-3 md:px-4 bg-neo-yellow text-[9px] md:text-[10px] shadow-neo-active flex items-center justify-center gap-1 sm:gap-2 group border-[3px] whitespace-nowrap w-full sm:w-auto"
+              className="neo-button py-2 px-3 md:px-4 bg-neo-yellow text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 sm:gap-2 group border-[3px] whitespace-nowrap w-full sm:w-auto transition-all"
             >
               <SettingsIcon className="w-3 h-3 group-hover:rotate-90 transition-transform shrink-0" />
               <span className="hidden sm:inline">Config</span>
-            </motion.button>
+            </button>
 
             <div className="neo-card py-1 px-2 md:py-1.5 md:px-3 bg-white flex items-center justify-center gap-1 sm:gap-2 shadow-neo border-[3px] text-[9px] md:text-[10px] w-full sm:w-auto">
               {user.avatarUrl && (
@@ -202,29 +193,25 @@ export function Header({ children, floating = false }: HeaderProps) {
               </div>
             </div>
 
-            <motion.button
-              whileHover={{ scale: 1.05, x: 2, y: 2 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={handleLogout}
-              className="neo-button py-2 px-3 md:px-4 bg-black text-white text-[9px] md:text-[10px] shadow-neo-active flex items-center justify-center gap-1 sm:gap-2 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto"
+              className="neo-button py-2 px-3 md:px-4 bg-black text-white text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 sm:gap-2 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto transition-all"
             >
               <Power className="w-3 h-3 group-hover:rotate-90 transition-transform text-neo-pink shrink-0" />
               <span className="hidden sm:inline">Logoff</span>
-            </motion.button>
+            </button>
           </div>
         ) : (
-          <motion.button
+          <button
             type="button"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
             onClick={() => {
               window.location.href = "/api/auth/github";
             }}
-            className="neo-button py-2 px-3 md:px-4 bg-neo-blue text-[9px] md:text-xs flex items-center justify-center gap-1 sm:gap-2 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto"
+            className="neo-button py-2 px-3 md:px-4 bg-neo-blue text-[9px] md:text-xs flex items-center justify-center gap-1 sm:gap-2 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto hover:scale-105 active:scale-95 transition-all"
           >
             <LogIn className="w-3 h-3 md:w-4 md:h-4 group-hover:-translate-x-1 transition-transform shrink-0" />
             <span className="hidden sm:inline">Connect</span>
-          </motion.button>
+          </button>
         )}
 
         {logoutError && (
@@ -233,6 +220,6 @@ export function Header({ children, floating = false }: HeaderProps) {
           </p>
         )}
       </div>
-    </motion.header>
+    </header>
   );
 }

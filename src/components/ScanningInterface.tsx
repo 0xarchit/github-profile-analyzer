@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 const LOG_MESSAGES = [
   "Initializing Kernel Scan...",
@@ -36,12 +35,7 @@ export function ScanningInterface() {
   }, []);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-neo-bg z-100 flex flex-col items-center justify-center p-6 sm:p-12 overflow-hidden"
-    >
+    <div className="fixed inset-0 bg-neo-bg z-100 flex flex-col items-center justify-center p-6 sm:p-12 overflow-hidden animate-in fade-in">
       <div className="absolute inset-0 protocol-noise opacity-10 pointer-events-none" />
       <div
         className="absolute inset-0 opacity-[0.1] pointer-events-none"
@@ -54,21 +48,12 @@ export function ScanningInterface() {
 
       <div className="max-w-3xl w-full space-y-12 relative z-10">
         <header className="text-center space-y-4">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="inline-block bg-black text-white px-6 py-2 text-xs font-black uppercase tracking-[0.5em] shadow-[0_0_20px_rgba(236,72,153,0.3)] border-2 border-neo-pink"
-          >
+          <div className="inline-block bg-black text-white px-6 py-2 text-xs font-black uppercase tracking-[0.5em] shadow-[0_0_20px_rgba(236,72,153,0.3)] border-2 border-neo-pink animate-in fade-in scale-in-95">
             Terminal Matrix: Initializing...
-          </motion.div>
-          <motion.h1
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-6xl md:text-8xl font-heading uppercase tracking-tighter leading-none text-black drop-shadow-[4px_4px_0px_#facc15]"
-          >
+          </div>
+          <h1 className="text-6xl md:text-8xl font-heading uppercase tracking-tighter leading-none text-black drop-shadow-[4px_4px_0px_#facc15] animate-in fade-in slide-in-from-bottom-4 delay-200">
             DECODING <span className="text-neo-pink">DNA</span>
-          </motion.h1>
+          </h1>
         </header>
 
         <div className="neo-card bg-black h-32 flex items-center justify-center relative overflow-hidden">
@@ -97,32 +82,26 @@ export function ScanningInterface() {
             <span>{Math.round(progress)}%</span>
           </div>
           <div className="h-12 bg-white border-4 border-black flex p-1 shadow-neo overflow-hidden">
-            <motion.div
-              className="h-full bg-neo-yellow flex"
-              layout
+            <div
+              className="h-full bg-neo-yellow flex transition-all"
               style={{ width: `${progress}%` }}
             >
               {[...Array(20)].map((_, i) => (
                 <div key={i} className="flex-1 border-r border-black/20" />
               ))}
-            </motion.div>
+            </div>
           </div>
         </div>
 
         <div className="neo-card bg-white p-6 min-h-35 flex flex-col justify-center border-4 relative overflow-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentLog}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="flex items-start gap-4 font-body font-bold text-lg"
-            >
-              <span className="text-neo-pink animate-bounce">&gt;</span>
-              <span className="text-black/80">{LOG_MESSAGES[currentLog]}</span>
-              <span className="w-2 h-6 bg-black animate-terminal-blink" />
-            </motion.div>
-          </AnimatePresence>
+          <div
+            key={currentLog}
+            className="flex items-start gap-4 font-body font-bold text-lg animate-in fade-in"
+          >
+            <span className="text-neo-pink animate-bounce">&gt;</span>
+            <span className="text-black/80">{LOG_MESSAGES[currentLog]}</span>
+            <span className="w-2 h-6 bg-black animate-terminal-blink" />
+          </div>
           <div className="mt-4 flex gap-2">
             {[...Array(3)].map((_, i) => (
               <div
@@ -141,6 +120,6 @@ export function ScanningInterface() {
           </p>
         </footer>
       </div>
-    </motion.div>
+    </div>
   );
 }
