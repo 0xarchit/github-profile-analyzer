@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Lock, Unlock, History, Clock } from "lucide-react";
+import {
+  Shield,
+  Lock,
+  Unlock,
+  History,
+  Clock,
+  Check,
+  X,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { Header } from "@/components/Header";
 
 import { UserSettings, Scan } from "@/lib/db";
@@ -169,9 +179,9 @@ export default function SettingsPage() {
                   className={`neo-button p-3 ${data.settings.keep_history ? "bg-neo-green" : "bg-white"} shadow-neo-active hover:shadow-neo transition-all`}
                 >
                   {data.settings.keep_history ? (
-                    <Lock className="w-6 h-6" />
+                    <Check className="w-6 h-6" />
                   ) : (
-                    <Unlock className="w-6 h-6 border-black/20" />
+                    <X className="w-6 h-6 border-black/20" />
                   )}
                 </button>
               </div>
@@ -197,9 +207,9 @@ export default function SettingsPage() {
                   className={`neo-button p-3 ${data.settings.public_scans ? "bg-neo-green" : "bg-white"} shadow-neo-active hover:shadow-neo transition-all`}
                 >
                   {data.settings.public_scans ? (
-                    <Lock className="w-6 h-6" />
+                    <Eye className="w-6 h-6" />
                   ) : (
-                    <Unlock className="w-6 h-6 border-black/20" />
+                    <EyeOff className="w-6 h-6 border-black/20" />
                   )}
                 </button>
               </div>

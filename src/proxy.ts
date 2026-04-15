@@ -50,7 +50,7 @@ export default async function proxy(request: NextRequest) {
 
   const isApiRoute = pathname.startsWith("/api/");
   const isAuthRoute = pathname.startsWith("/api/auth/");
-  const isStaticFile = pathname.includes(".");
+  const isStaticFile = /\.[^/]+$/.test(pathname);
   const isSettingsRoute = pathname === "/settings";
 
   const isPotentialProfile =
@@ -96,7 +96,7 @@ export default async function proxy(request: NextRequest) {
         const forwarded = request.headers.get("x-forwarded-for");
         const realIp = request.headers.get("x-real-ip");
         const ip = forwarded
-          ? forwarded.split(",").pop()?.trim() || realIp || "127.0.0.1"
+          ? forwarded.split(",")[0]?.trim() || realIp || "127.0.0.1"
           : realIp || "127.0.0.1";
 
         const { success } = await ratelimit.limit(ip);

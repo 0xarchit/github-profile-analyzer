@@ -182,23 +182,28 @@ export async function saveScan(
   data: ValidatedAnalysisResult,
 ): Promise<Scan> {
   const rows = await sql`
-    INSERT INTO scans (user_id, username, data)
-    VALUES (${userId}, ${username}, ${JSON.stringify(data)})
-    RETURNING *
-  `;
-  const newScan = rows[0] as Scan;
-
-  await sql`
-    DELETE FROM scans 
-    WHERE id IN (
-      SELECT id FROM scans 
-      WHERE user_id = ${userId} 
-      ORDER BY created_at DESC 
-      OFFSET 10
+    WITH inserted AS (
+      INSERT INTO scans (user_id, username, data)
+      VALUES (${userId}, ${username}, ${JSON.stringify(data)}::jsonb)
+      RETURNING *
+    ),
+    ranked AS (
+      SELECT id,
+             ROW_NUMBER() OVER (
+               PARTITION BY user_id
+               ORDER BY created_at DESC, id DESC
+             ) AS row_num
+      FROM scans
+      WHERE user_id = ${userId}
+    ),
+    deleted AS (
+      DELETE FROM scans
+      WHERE id IN (SELECT id FROM ranked WHERE row_num > 10)
+      RETURNING id
     )
+    SELECT * FROM inserted
   `;
-
-  return newScan;
+  return rows[0] as Scan;
 }
 
 export async function getScanById(id: string): Promise<Scan | null> {

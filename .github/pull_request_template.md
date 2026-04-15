@@ -19,6 +19,7 @@
 - [ ] I have updated the documentation accordingly
 - [ ] I have added comments for complex logic
 - [ ] I have verified my changes work locally
+- [ ] I have run lint, type-check, and production build locally
 - [ ] I have documented migration/rollback notes for breaking changes (if applicable)
 
 ## Related Issues

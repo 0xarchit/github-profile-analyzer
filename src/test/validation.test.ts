@@ -87,12 +87,12 @@ describe("Validation Protocol - Zod Schema Validation", () => {
     });
 
     it("should require all three segment texts", () => {
-      const segments = {
-        roast: "text",
-        technical_analysis: "text",
-        strategic_advice: "text",
+      const missingOne = {
+        ...validData,
+        segments: { roast: "text", technical_analysis: "text" },
       };
-      expect(Object.keys(segments).length).toBe(3);
+      const result = AnalysisResultSchema.safeParse(missingOne);
+      expect(result.success).toBe(false);
     });
   });
 
@@ -134,21 +134,25 @@ describe("Validation Protocol - Zod Schema Validation", () => {
 
   describe("Nested Objects Validation", () => {
     it("should validate career_stats structure", () => {
-      const valid = { ...validData };
-      const result = AnalysisResultSchema.safeParse(valid);
-      expect(result.success).toBe(true);
+      const invalid = JSON.parse(JSON.stringify(validData));
+      invalid.career_stats.total_commits = "1500";
+      const result = AnalysisResultSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
 
     it("should validate calendar_data structure", () => {
-      const valid = { ...validData };
-      const result = AnalysisResultSchema.safeParse(valid);
-      expect(result.success).toBe(true);
+      const invalid = JSON.parse(JSON.stringify(validData));
+      invalid.calendar_data.weeks[0].contributionDays[0].contributionCount =
+        "five";
+      const result = AnalysisResultSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
 
     it("should handle missing optional nested fields", () => {
-      const valid = { ...validData };
-      const result = AnalysisResultSchema.safeParse(valid);
-      expect(result.success).toBe(true);
+      const invalid = JSON.parse(JSON.stringify(validData));
+      delete invalid.career_stats.top_languages;
+      const result = AnalysisResultSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
   });
 
@@ -226,7 +230,14 @@ describe("Validation Protocol - Zod Schema Validation", () => {
     it("should not accept null for optional fields", () => {
       const withNull = { ...validData, developer_type: null };
       const result = AnalysisResultSchema.safeParse(withNull);
-      expect(typeof result.success).toBe("boolean");
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((issue) =>
+            issue.path.includes("developer_type"),
+          ),
+        ).toBe(true);
+      }
     });
   });
 
@@ -234,7 +245,12 @@ describe("Validation Protocol - Zod Schema Validation", () => {
     it("should handle number-string conversions", () => {
       const data = { ...validData, score: "85" as unknown as number };
       const result = AnalysisResultSchema.safeParse(data);
-      expect(typeof result).toBe("object");
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((issue) => issue.path.includes("score")),
+        ).toBe(true);
+      }
     });
   });
 });

@@ -28,13 +28,15 @@ interface LineChartProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
 }
 
+const DEFAULT_STROKE_COLORS = ["#ec4899", "#0ea5e9", "#facc15", "#22c55e"];
+
 const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
   (
     {
       data = [],
       index,
       categories = [],
-      strokeColors = ["#ec4899", "#0ea5e9", "#facc15", "#22c55e"],
+      strokeColors = DEFAULT_STROKE_COLORS,
       tooltipBgColor = "#ffffff",
       tooltipBorderColor = "#000000",
       gridColor = "rgba(0,0,0,0.1)",
@@ -48,6 +50,13 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
     },
     ref,
   ) => {
+    const palette =
+      strokeColors.length > 0 ? strokeColors : DEFAULT_STROKE_COLORS;
+    const formatNumericValue = (value: unknown): string => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return "";
+      return valueFormatter(value);
+    };
+
     return (
       <div ref={ref} className={cn("h-80 w-full", className)} {...props}>
         <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +79,7 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
               axisLine={false}
               tickLine={false}
               className="text-xs fill-muted-foreground"
-              tickFormatter={valueFormatter}
+              tickFormatter={(value) => formatNumericValue(value)}
             />
 
             {showTooltip && (
@@ -101,7 +110,7 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
                               className="text-xs font-black tabular-nums"
                               style={{ color: entry.color as string }}
                             >
-                              {valueFormatter(entry.value as number)}
+                              {formatNumericValue(entry.value)}
                             </span>
                           </div>
                         ))}
@@ -113,7 +122,7 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
             )}
 
             {categories.map((category, idx) => {
-              const strokeColor = strokeColors[idx] || strokeColors[0];
+              const strokeColor = palette[idx % palette.length];
 
               return (
                 <Line

@@ -53,10 +53,54 @@ function getFallbackToken(): string {
   return token;
 }
 
+const GITHUB_FETCH_TIMEOUT_MS = 10_000;
+
+async function githubFetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = GITHUB_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function buildGitHubGraphQLHeaders(token: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "User-Agent": "GitScore/1.1",
+  };
+}
+
+async function fetchGitHubGraphQL(
+  token: string,
+  query: string,
+  variables: Record<string, unknown>,
+  timeoutMs = GITHUB_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  return githubFetchWithTimeout(
+    "https://api.github.com/graphql",
+    {
+      method: "POST",
+      headers: buildGitHubGraphQLHeaders(token),
+      body: JSON.stringify({ query, variables }),
+    },
+    timeoutMs,
+  );
+}
+
 async function checkAchievementStatus(username: string, slug: string) {
   const url = `https://github.com/${encodeURIComponent(username)}?tab=achievements&achievement=${slug}`;
   try {
-    const res = await fetch(url, {
+    const res = await githubFetchWithTimeout(url, {
       method: "HEAD",
       headers: { "User-Agent": "GitScore/1.1" },
     });
@@ -141,15 +185,21 @@ export async function getProfileSummary(
     }
   `;
 
-  const res = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "GitScore/1.1",
-    },
-    body: JSON.stringify({ query, variables: { login: username } }),
-  });
+  const requestSummary = async (authToken: string) =>
+    fetchGitHubGraphQL(authToken, query, { login: username });
+
+  let res = await requestSummary(token);
+  if (res.status === 401 || res.status === 403) {
+    const retryToken = getFallbackToken();
+    res = await requestSummary(retryToken);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("GITHUB_AUTH_FAILED");
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(`GitHub API error: HTTP ${res.status}`);
+  }
 
   const body = await res.json();
   if (body.errors) {
@@ -379,10 +429,14 @@ function buildGitHubRestHeaders(token?: string): HeadersInit {
 }
 
 async function fetchGitHubRest(url: string, token?: string): Promise<Response> {
-  const first = await fetch(url, { headers: buildGitHubRestHeaders(token) });
+  const first = await githubFetchWithTimeout(url, {
+    headers: buildGitHubRestHeaders(token),
+  });
   if ((first.status === 401 || first.status === 403) && token) {
     starGateLog("rest_retry_without_token", { url, status: first.status });
-    return fetch(url, { headers: buildGitHubRestHeaders() });
+    return githubFetchWithTimeout(url, {
+      headers: buildGitHubRestHeaders(),
+    });
   }
   return first;
 }
@@ -439,7 +493,7 @@ export async function checkStarStatus(
 
   if (userToken) {
     try {
-      const res = await fetch(
+      const res = await githubFetchWithTimeout(
         `https://api.github.com/user/starred/${targetRepo}`,
         {
           headers: {
@@ -530,18 +584,23 @@ async function executeBidirectionalStarCheck(
   `;
 
   try {
-    const resCount = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "User-Agent": "GitScore/1.1",
-      },
-      body: JSON.stringify({
-        query: countQuery,
-        variables: { owner: targetOwner, name: targetName, user: username },
-      }),
+    const resCount = await fetchGitHubGraphQL(token, countQuery, {
+      owner: targetOwner,
+      name: targetName,
+      user: username,
     });
+    if (!resCount.ok) {
+      starGateLog("graphql_count_http_error", {
+        username,
+        status: resCount.status,
+      });
+      return executeRestFallbackStarCheck(
+        username,
+        targetOwner,
+        targetName,
+        token,
+      );
+    }
     const countBody = await resCount.json();
     const countError = extractGraphQLErrorMessage(countBody);
     if (countError) {
@@ -845,18 +904,17 @@ async function paginateUserStarsForward(
     }
   `;
 
-  const githubRes = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "GitScore/1.1",
-    },
-    body: JSON.stringify({
-      query,
-      variables: { user: username, after: cursor },
-    }),
+  const githubRes = await fetchGitHubGraphQL(token, query, {
+    user: username,
+    after: cursor,
   });
+  if (!githubRes.ok) {
+    starGateLog("graphql_user_forward_http_error", {
+      username,
+      status: githubRes.status,
+    });
+    return false;
+  }
   const githubBody = await githubRes.json();
   const graphError = extractGraphQLErrorMessage(githubBody);
   if (graphError) {
@@ -906,18 +964,17 @@ async function paginateUserStarsBackward(
     }
   `;
 
-  const githubRes = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "GitScore/1.1",
-    },
-    body: JSON.stringify({
-      query,
-      variables: { user: username, before: cursor },
-    }),
+  const githubRes = await fetchGitHubGraphQL(token, query, {
+    user: username,
+    before: cursor,
   });
+  if (!githubRes.ok) {
+    starGateLog("graphql_user_backward_http_error", {
+      username,
+      status: githubRes.status,
+    });
+    return false;
+  }
   const githubBody = await githubRes.json();
   const graphError = extractGraphQLErrorMessage(githubBody);
   if (graphError) {
@@ -968,18 +1025,18 @@ async function paginateRepoStarsForward(
     }
   `;
 
-  const githubRes = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "GitScore/1.1",
-    },
-    body: JSON.stringify({
-      query,
-      variables: { owner: targetOwner, name: targetName, after: cursor },
-    }),
+  const githubRes = await fetchGitHubGraphQL(token, query, {
+    owner: targetOwner,
+    name: targetName,
+    after: cursor,
   });
+  if (!githubRes.ok) {
+    starGateLog("graphql_repo_forward_http_error", {
+      username: targetUser,
+      status: githubRes.status,
+    });
+    return false;
+  }
   const githubBody = await githubRes.json();
   const graphError = extractGraphQLErrorMessage(githubBody);
   if (graphError) {
@@ -1030,18 +1087,18 @@ async function paginateRepoStarsBackward(
     }
   `;
 
-  const githubRes = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "GitScore/1.1",
-    },
-    body: JSON.stringify({
-      query,
-      variables: { owner: targetOwner, name: targetName, before: cursor },
-    }),
+  const githubRes = await fetchGitHubGraphQL(token, query, {
+    owner: targetOwner,
+    name: targetName,
+    before: cursor,
   });
+  if (!githubRes.ok) {
+    starGateLog("graphql_repo_backward_http_error", {
+      username: targetUser,
+      status: githubRes.status,
+    });
+    return false;
+  }
   const githubBody = await githubRes.json();
   const graphError = extractGraphQLErrorMessage(githubBody);
   if (graphError) {

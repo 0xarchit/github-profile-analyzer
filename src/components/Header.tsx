@@ -196,14 +196,17 @@ export function Header({ children, floating = false }: HeaderProps) {
             </div>
           ) : (
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <a
-                href="/api/auth/github"
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = "/api/auth/github";
+                }}
                 className="neo-button py-2 px-4 md:px-6 bg-neo-blue text-xs flex items-center gap-2 group shadow-neo-lg"
               >
                 <LogIn className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="hidden sm:inline">Integrate GitHub</span>
                 <span className="sm:hidden">Integrate</span>
-              </a>
+              </button>
             </motion.div>
           )}
         </div>
