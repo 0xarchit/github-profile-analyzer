@@ -321,7 +321,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
                 <span className="hidden sm:inline">Neural Roast</span>
                 <span className="sm:hidden">Roast</span>
               </h3>
-              <span className="text-[10px] sm:text-[9px] md:text-[10px] font-black uppercase opacity-60 tracking-[0.15em] animate-pulse">
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase opacity-60 tracking-[0.15em] animate-pulse">
                 Live
               </span>
             </div>
