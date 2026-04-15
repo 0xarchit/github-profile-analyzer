@@ -40,7 +40,7 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
         return;
       }
 
-      setData(result.data);
+      setData(result);
     } catch {
       setError("NETWORK_FAILURE");
     }

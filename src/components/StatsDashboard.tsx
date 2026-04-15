@@ -216,15 +216,21 @@ export function StatsDashboard({ data }: { data: AnalysisResult }) {
             />
           </div>
           <div className="flex flex-wrap gap-2 sm:gap-3 justify-center">
-            {career_stats.top_languages.map((l) => (
-              <div
-                key={l.name}
-                className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase border-4 border-black px-3 sm:px-4 py-1 sm:py-1.5 shadow-neo-active hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-black"
-                style={{ backgroundColor: l.color }}
-              >
-                {l.name} {l.value.toFixed(2)}%
+            {career_stats.top_languages.length > 0 ? (
+              career_stats.top_languages.map((l) => (
+                <div
+                  key={l.name}
+                  className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase border-4 border-black px-3 sm:px-4 py-1 sm:py-1.5 shadow-neo-active hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-black"
+                  style={{ backgroundColor: l.color }}
+                >
+                  {l.name} {l.value.toFixed(2)}%
+                </div>
+              ))
+            ) : (
+              <div className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 px-4 py-2">
+                No languages detected
               </div>
-            ))}
+            )}
           </div>
         </motion.div>
 

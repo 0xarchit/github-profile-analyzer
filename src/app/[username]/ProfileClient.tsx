@@ -97,8 +97,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
     setIsVerifyingAgain(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      void fetchData();
-      setShowStarModal(false);
+      await fetchData();
     } finally {
       setIsVerifyingAgain(false);
     }
@@ -557,6 +556,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
                   <a
                     href={`https://github.com/${username}/${name}`}
                     target="_blank"
+                    rel="noopener noreferrer"
                     className="p-2 hover:bg-neo-yellow border-2 border-transparent hover:border-black transition-all"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -577,10 +577,11 @@ function SectionCard({
   accent,
 }: {
   title: string;
-  content: string;
+  content: string | undefined;
   bgColor: string;
   accent: string;
 }) {
+  if (!content) return null;
   return (
     <div
       className={`neo-card ${bgColor} space-y-3 sm:space-y-4 border-3 sm:border-4 border-black h-full shadow-neo hover:shadow-neo-lg transition-all ${accent} border-l-8 sm:border-l-12 p-4 sm:p-6`}

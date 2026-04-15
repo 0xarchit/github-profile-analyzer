@@ -15,8 +15,6 @@ import {
 
 export const runtime = "edge";
 
-const inflightByCacheKey = new Map<string, Promise<AnalyzedPayload>>();
-
 type AnalyzedPayload = ValidatedAnalysisResult & {
   isStarred: boolean;
   cachedAt: string;
@@ -204,17 +202,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (!force) {
-      const inflight = inflightByCacheKey.get(cacheKey);
-      if (inflight) {
-        const finalData = await inflight;
-        return NextResponse.json(finalData);
-      }
-
-      const leaderTask = populateAnalysis().finally(() => {
-        inflightByCacheKey.delete(cacheKey);
-      });
-      inflightByCacheKey.set(cacheKey, leaderTask);
-      const finalData = await leaderTask;
+      const finalData = await populateAnalysis();
 
       if (
         viewerUser &&

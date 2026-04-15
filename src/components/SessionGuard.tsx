@@ -9,7 +9,8 @@ export function SessionGuard() {
   const lastCheck = useRef<number>(0);
 
   useEffect(() => {
-    const isProtected = pathname === "/settings";
+    const isProtected =
+      pathname === "/settings" || pathname.startsWith("/settings/");
 
     const checkSession = async (force = false) => {
       const now = Date.now();
