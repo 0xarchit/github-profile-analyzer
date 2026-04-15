@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ProfileClient } from "./ProfileClient";
 import { getUserByUsername, getLatestSelfScan } from "@/lib/db";
 
+export const runtime = "edge";
+
 export async function generateMetadata({
   params,
 }: {

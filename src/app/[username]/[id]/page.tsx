@@ -1,16 +1,22 @@
-import { Metadata } from 'next';
-import { SnapshotClient } from './SnapshotClient';
-import { getScanById } from '@/lib/db';
+import { Metadata } from "next";
+import { SnapshotClient } from "./SnapshotClient";
+import { getScanById } from "@/lib/db";
 
-export async function generateMetadata({ params }: { params: Promise<{ username: string, id: string }> }): Promise<Metadata> {
+export const runtime = "edge";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string; id: string }>;
+}): Promise<Metadata> {
   const { username, id } = await params;
   const scan = await getScanById(id);
   let score = 0;
-  let devType = 'Developer';
+  let devType = "Developer";
 
   if (scan) {
     score = scan.data.score;
-    devType = scan.data.developer_type || 'Developer';
+    devType = scan.data.developer_type || "Developer";
   }
 
   const title = `Archived Protocol: ${username} | ${score}/100 GitScore`;
@@ -25,7 +31,7 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
       images: [`/api/og?username=${username}&score=${score}&snapshot=true`],
     },
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       title,
       description,
       images: [`/api/og?username=${username}&score=${score}&snapshot=true`],
@@ -33,7 +39,11 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   };
 }
 
-export default async function Page({ params }: { params: Promise<{ username: string, id: string }> }) {
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ username: string; id: string }>;
+}) {
   const { username, id } = await params;
   return <SnapshotClient username={username} id={id} />;
 }
