@@ -10,6 +10,16 @@ const GITHUB_TOKENS = (process.env.GITHUB_TOKENS || "")
   .split(",")
   .filter(Boolean);
 
+if (GITHUB_TOKENS.length === 0) {
+  throw new Error("GITHUB_TOKENS environment variable is required");
+}
+
+const ACHIEVEMENT_CACHE_TTL_MS = 10 * 60 * 1000;
+const achievementCache = new Map<
+  string,
+  { value: string | null; expiresAt: number }
+>();
+
 const badgeAssets: Record<string, string> = {
   "pull-shark":
     "https://github.githubassets.com/assets/pull-shark-default-498c279a747d.png",
@@ -115,14 +125,30 @@ async function fetchGitHubGraphQL(
 }
 
 async function checkAchievementStatus(username: string, slug: string) {
+  const cacheKey = `${normalizeUsername(username)}:${slug}`;
+  const now = Date.now();
+  const cached = achievementCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
   const url = `https://github.com/${encodeURIComponent(username)}?tab=achievements&achievement=${slug}`;
   try {
     const res = await githubFetchWithTimeout(url, {
       method: "HEAD",
       headers: { "User-Agent": "GitScore/1.1" },
     });
-    return res.status === 200 ? slug : null;
+    const value = res.status === 200 ? slug : null;
+    achievementCache.set(cacheKey, {
+      value,
+      expiresAt: now + ACHIEVEMENT_CACHE_TTL_MS,
+    });
+    return value;
   } catch {
+    achievementCache.set(cacheKey, {
+      value: null,
+      expiresAt: now + ACHIEVEMENT_CACHE_TTL_MS,
+    });
     return null;
   }
 }

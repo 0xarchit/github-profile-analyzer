@@ -13,13 +13,20 @@ const outfit = Outfit({
   subsets: ["latin"],
 });
 
-import { SessionGuard } from "@/components/SessionGuard";
 import { PdfxThemeProvider } from "@/lib/pdfx-theme-context";
 
+function getMetadataBase(): URL {
+  const raw = process.env.NEXT_PUBLIC_APP_URL;
+  if (!raw) return new URL("http://localhost:3000");
+  try {
+    return new URL(raw);
+  } catch {
+    return new URL("http://localhost:3000");
+  }
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  ),
+  metadataBase: getMetadataBase(),
   title: "GitHub Profile Analyzer | Decode Your Engineering DNA",
   description:
     "The high-fidelity protocol for technical identity analysis. Roast your code, quantify your impact, and upgrade your career trajectory.",
@@ -44,10 +51,7 @@ export default function RootLayout({
       <body
         className={`${bricolage.variable} ${outfit.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
       >
-        <PdfxThemeProvider>
-          <SessionGuard />
-          {children}
-        </PdfxThemeProvider>
+        <PdfxThemeProvider>{children}</PdfxThemeProvider>
       </body>
     </html>
   );

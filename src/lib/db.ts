@@ -123,7 +123,11 @@ async function materializeUser(
   if (!row) return null;
   const user = row as User;
   user.settings = normalizeSettings(user.settings);
-  if (includeAccessToken) {
+  if (
+    includeAccessToken &&
+    typeof user.access_token === "string" &&
+    user.access_token.trim().length > 0
+  ) {
     user.access_token = await decrypt(user.access_token);
   } else {
     user.access_token = "";
@@ -203,7 +207,14 @@ export async function upsertUser(user: {
   `;
 
   const result = rows[0] as User;
-  result.access_token = await decrypt(result.access_token);
+  if (
+    typeof result.access_token === "string" &&
+    result.access_token.trim().length > 0
+  ) {
+    result.access_token = await decrypt(result.access_token);
+  } else {
+    result.access_token = "";
+  }
   result.settings = normalizeSettings(result.settings);
   return result;
 }

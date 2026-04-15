@@ -4,7 +4,7 @@ import { getPDFHeatmapColor } from "@/lib/utils";
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    padding: 34,
     backgroundColor: "#fffbf0",
     fontFamily: "Helvetica",
   },
@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     textTransform: "uppercase",
   },
@@ -71,15 +71,16 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   bodyText: {
-    fontSize: 9,
+    fontSize: 10,
     lineHeight: 1.5,
     color: "#000",
   },
   roastText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "bold",
     fontStyle: "italic",
     color: "#000",
+    lineHeight: 1.35,
   },
   segmentsGrid: {
     flexDirection: "row",
@@ -203,6 +204,13 @@ const styles = StyleSheet.create({
 
 export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
   const { career_stats, calendar_data } = data;
+  const topLanguages = career_stats?.top_languages || [];
+  const trophies = career_stats?.trophies || [];
+  const weeks = calendar_data?.weeks || [];
+  const projectIdeas = Object.entries(data.project_ideas || {});
+  const badgeEntries = Object.entries(data.badges || {});
+  const improvementAreas = data.improvement_areas || [];
+  const diagnostics = data.diagnostics || [];
 
   return (
     <Document>
@@ -272,7 +280,7 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
             Temporal Impact Topology (52W)
           </Text>
           <View style={styles.heatmapTable}>
-            {calendar_data?.weeks?.slice(-48).map((week, i) => (
+            {weeks.slice(-48).map((week, i) => (
               <View key={i} style={styles.heatmapCol}>
                 {week.contributionDays.map((day, j) => (
                   <View
@@ -293,7 +301,7 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
         </View>
 
         <View style={styles.trophyRow}>
-          {career_stats?.trophies.slice(0, 6).map((t, i) => (
+          {trophies.slice(0, 6).map((t, i) => (
             <View key={i} style={styles.trophyCard}>
               <Text style={[styles.trophyRank, { backgroundColor: t.color }]}>
                 {t.rank}
@@ -314,7 +322,7 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
         <View style={{ flexDirection: "row", gap: 15 }}>
           <View style={styles.langBox}>
             <Text style={styles.sectionTitle}>Language Shards</Text>
-            {career_stats?.top_languages.map((l, i) => (
+            {topLanguages.map((l, i) => (
               <View
                 key={i}
                 style={{
@@ -337,40 +345,38 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
           </View>
           <View style={styles.evolutionBox}>
             <Text style={styles.sectionTitle}>Evolution Strategy</Text>
-            {Object.entries(data.project_ideas || {})
-              .slice(0, 2)
-              .map(([id, idea]) => (
-                <View
-                  key={id}
+            {projectIdeas.slice(0, 2).map(([id, idea]) => (
+              <View
+                key={id}
+                style={{
+                  marginBottom: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#eee",
+                  paddingBottom: 5,
+                }}
+              >
+                <Text
                   style={{
-                    marginBottom: 10,
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#eee",
-                    paddingBottom: 5,
+                    fontSize: 10,
+                    fontWeight: "bold",
+                    color: "#f472b6",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: "bold",
-                      color: "#f472b6",
-                    }}
-                  >
-                    - {idea.title}
-                  </Text>
-                  <Text style={{ fontSize: 7, fontStyle: "italic" }}>
-                    {idea.description.slice(0, 180)}...
-                  </Text>
-                </View>
-              ))}
+                  - {idea.title}
+                </Text>
+                <Text style={{ fontSize: 7, fontStyle: "italic" }}>
+                  {(idea.description || "").slice(0, 180)}...
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
 
         <View style={{ marginBottom: 30 }}>
           <Text style={styles.sectionTitle}>Neural Achievements</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {Object.keys(data.badges || {}).length > 0
-              ? Object.entries(data.badges || {}).map(([slug], i) => (
+            {badgeEntries.length > 0
+              ? badgeEntries.map(([slug], i) => (
                   <View
                     key={i}
                     style={{
@@ -393,7 +399,7 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
                     </Text>
                   </View>
                 ))
-              : data.improvement_areas?.map((area, i) => (
+              : improvementAreas.map((area, i) => (
                   <View
                     key={i}
                     style={{
@@ -421,7 +427,7 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
 
         <View style={{ marginBottom: 30 }}>
           <Text style={styles.sectionTitle}>Strategic Growth Points</Text>
-          {data.diagnostics?.slice(0, 8).map((diag, i) => (
+          {diagnostics.slice(0, 8).map((diag, i) => (
             <View
               key={i}
               style={{

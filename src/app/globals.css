@@ -136,7 +136,7 @@
   left: -100%;
   width: 300%;
   height: 300%;
-  background-image: url("https://www.transparenttextures.com/patterns/carbon-fibre.png");
+  background-image: url("/carbon-fibre.png");
   opacity: 0.03;
   animation: noise-anim 0.2s infinite;
   pointer-events: none;

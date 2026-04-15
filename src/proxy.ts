@@ -100,7 +100,15 @@ export default async function proxy(request: NextRequest) {
       try {
         await jwtVerify(sessionToken, JWT_SECRET);
         isAuthenticated = true;
-      } catch {}
+      } catch (err) {
+        if (process.env.NODE_ENV !== "production") {
+          const tokenPreview = `${sessionToken.slice(0, 8)}...`;
+          console.debug("[PROXY] JWT verification failed", {
+            tokenPreview,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
     }
 
     if (!isAuthenticated) {

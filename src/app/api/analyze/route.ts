@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { UsernameSchema } from "@/lib/validation";
+import type { ValidatedAnalysisResult } from "@/lib/validation";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
 import { getAIAnalysis } from "@/lib/ai";
 import { getSession } from "@/lib/auth";
@@ -13,6 +14,13 @@ import {
 } from "@/lib/db";
 
 export const runtime = "edge";
+
+const inflightByCacheKey = new Map<string, Promise<AnalyzedPayload>>();
+
+type AnalyzedPayload = ValidatedAnalysisResult & {
+  isStarred: boolean;
+  cachedAt: string;
+};
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -36,13 +44,6 @@ export async function GET(request: NextRequest) {
   const username = parsed.data;
   const force = searchParams.get("force") === "true";
   const nosave = searchParams.get("nosave") === "true";
-
-  if (!username) {
-    return NextResponse.json(
-      { error: "Username is required" },
-      { status: 400 },
-    );
-  }
 
   console.log("[ANALYZE] Validated username", { username, force, nosave });
   const session = await getSession();
@@ -177,25 +178,50 @@ export async function GET(request: NextRequest) {
       console.log("[ANALYZE] Force refresh requested - skipping cache");
     }
 
-    console.log("[ANALYZE] Fetching profile summary", { username });
-    const profile = await getProfileSummary(username, scannerToken);
-    console.log("[ANALYZE] Profile summary completed", {
-      repos: Object.keys(profile.original_repos).length,
-    });
+    const populateAnalysis = async (): Promise<AnalyzedPayload> => {
+      console.log("[ANALYZE] Fetching profile summary", { username });
+      const profile = await getProfileSummary(username, scannerToken);
+      console.log("[ANALYZE] Profile summary completed", {
+        repos: Object.keys(profile.original_repos).length,
+      });
 
-    console.log("[ANALYZE] Starting AI analysis");
-    const analysis = await getAIAnalysis(profile, scannerToken);
-    console.log("[ANALYZE] AI analysis completed", { score: analysis.score });
+      console.log("[ANALYZE] Starting AI analysis");
+      const analysis = await getAIAnalysis(profile, scannerToken);
+      console.log("[ANALYZE] AI analysis completed", { score: analysis.score });
 
-    const finalData = {
-      ...profile,
-      ...analysis,
-      isStarred: true,
-      cachedAt: new Date().toISOString(),
+      const finalData: AnalyzedPayload = {
+        ...profile,
+        ...analysis,
+        isStarred: true,
+        cachedAt: new Date().toISOString(),
+      };
+
+      console.log("[ANALYZE] Setting cache", { cacheKey });
+      await setCachedData(cacheKey, finalData);
+      console.log("[ANALYZE] Cache set successfully");
+
+      return finalData;
     };
 
-    if (viewerUser && !nosave && isOwnerOfTarget) {
-      if (viewerUser.settings.keep_history) {
+    if (!force) {
+      const inflight = inflightByCacheKey.get(cacheKey);
+      if (inflight) {
+        const finalData = await inflight;
+        return NextResponse.json(finalData);
+      }
+
+      const leaderTask = populateAnalysis().finally(() => {
+        inflightByCacheKey.delete(cacheKey);
+      });
+      inflightByCacheKey.set(cacheKey, leaderTask);
+      const finalData = await leaderTask;
+
+      if (
+        viewerUser &&
+        !nosave &&
+        isOwnerOfTarget &&
+        viewerUser.settings.keep_history
+      ) {
         console.log("[ANALYZE] Saving scan to database", {
           userId: viewerUser.id,
           username,
@@ -203,11 +229,26 @@ export async function GET(request: NextRequest) {
         await saveScan(viewerUser.id, username, finalData);
         console.log("[ANALYZE] Scan saved to database");
       }
+
+      console.log("[ANALYZE] Analysis complete - returning result");
+      return NextResponse.json(finalData);
     }
 
-    console.log("[ANALYZE] Setting cache", { cacheKey });
-    await setCachedData(cacheKey, finalData);
-    console.log("[ANALYZE] Cache set successfully");
+    const finalData = await populateAnalysis();
+
+    if (
+      viewerUser &&
+      !nosave &&
+      isOwnerOfTarget &&
+      viewerUser.settings.keep_history
+    ) {
+      console.log("[ANALYZE] Saving scan to database", {
+        userId: viewerUser.id,
+        username,
+      });
+      await saveScan(viewerUser.id, username, finalData);
+      console.log("[ANALYZE] Scan saved to database");
+    }
 
     console.log("[ANALYZE] Analysis complete - returning result");
     return NextResponse.json(finalData);

@@ -4,8 +4,14 @@ import { checkStarStatus, getRepoStarCount } from "@/lib/github";
 
 export const runtime = "edge";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const repoOnly = searchParams.get("repoOnly") === "true";
   const repoStars = await getRepoStarCount();
+  if (repoOnly) {
+    return NextResponse.json({ repoStars });
+  }
+
   const session = await getSession();
   if (!session?.username) {
     return NextResponse.json({ hasStarred: false, repoStars });

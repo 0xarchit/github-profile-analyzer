@@ -52,6 +52,7 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
 
   const handleViewerVerification = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (verifyingStar) return;
     if (!viewerUsername.trim()) return;
 
     setVerificationError(null);
@@ -118,7 +119,8 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
             />
             <button
               type="submit"
-              className="neo-button bg-neo-pink text-white w-full py-4 text-xl"
+              className="neo-button bg-neo-pink text-white w-full py-4 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={verifyingStar}
             >
               {verifyingStar ? "Verifying..." : "Unlock History"}
             </button>
@@ -138,14 +140,12 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
   return (
     <main className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-8 sm:space-y-10 md:space-y-12 w-full max-w-full lg:max-w-7xl mx-auto text-black overflow-x-hidden">
       <Header>
-        {data && (
-          <PDFExportButton
-            data={data}
-            filename={`Snapshot_${username}_${id}.pdf`}
-            label="Download Archive"
-            shortLabel="Archive"
-          />
-        )}
+        <PDFExportButton
+          data={data}
+          filename={`Snapshot_${username}_${id}.pdf`}
+          label="Download Archive"
+          shortLabel="Archive"
+        />
       </Header>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8">

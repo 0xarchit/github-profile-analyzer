@@ -100,7 +100,7 @@ const BarChart = React.forwardRef<HTMLDivElement, BarChartProps>(
                 content={({ active, payload, label }) => {
                   if (!active || !payload) return null;
                   return (
-                    <div className="neo-card p-3 shadow-neo border-[3px] bg-white min-w-[120px]">
+                    <div className="neo-card p-3 shadow-neo border-[3px] bg-white min-w-30">
                       <p className="text-[10px] uppercase font-black mb-2 border-b-2 border-black pb-1">
                         {label}
                       </p>
