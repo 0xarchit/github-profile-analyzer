@@ -15,7 +15,6 @@ const StatsDashboard = dynamic(
       default: mod.StatsDashboard,
     })),
   {
-    ssr: false,
     loading: () => <div className="h-96 bg-neo-bg animate-pulse" />,
   },
 );
@@ -23,11 +22,38 @@ const StatsDashboard = dynamic(
 interface SnapshotClientProps {
   username: string;
   id: string;
+  initialData?: AnalysisResult | null;
 }
 
-export function SnapshotClient({ username, id }: SnapshotClientProps) {
+function toAnalysisResult(payload: unknown): AnalysisResult {
+  const result = payload as {
+    data?: AnalysisResult;
+    created_at?: string;
+    username?: string;
+    id?: string;
+  };
+
+  if (result?.data) {
+    return {
+      ...result.data,
+      cachedAt: result.data.cachedAt || result.created_at,
+      username: result.data.username || result.username || "",
+      snapshotId: result.data.snapshotId || result.id,
+      isHistorical: true,
+      isLocked: true,
+    };
+  }
+
+  return payload as AnalysisResult;
+}
+
+export function SnapshotClient({
+  username,
+  id,
+  initialData,
+}: SnapshotClientProps) {
   const router = useRouter();
-  const [data, setData] = useState<AnalysisResult | null>(null);
+  const [data, setData] = useState<AnalysisResult | null>(initialData || null);
   const [error, setError] = useState<string | null>(null);
   const [showStarModal, setShowStarModal] = useState(false);
   const [viewerUsername, setViewerUsername] = useState("");
@@ -51,15 +77,18 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
         return;
       }
 
-      setData(result);
+      setData(toAnalysisResult(result));
+      setError(null);
     } catch {
       setError("NETWORK_FAILURE");
     }
   }, [id]);
 
   useEffect(() => {
-    fetchSnapshot();
-  }, [id, fetchSnapshot]);
+    if (!initialData) {
+      void fetchSnapshot();
+    }
+  }, [id, fetchSnapshot, initialData]);
 
   const handleViewerVerification = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,7 +192,7 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
         <div className="bg-black text-white px-4 py-2 text-[10px] font-black uppercase shadow-neo flex items-center gap-2">
           <Clock className="w-4 h-4 text-neo-yellow" />
           Historical Archive:{" "}
-          {new Date(data.cachedAt || Date.now()).toLocaleDateString()}
+          {new Date(data.cachedAt || Date.now()).toDateString()}
         </div>
         <div className="space-y-1 text-black mt-6 md:mt-0">
           <h1 className="text-3xl md:text-5xl font-heading uppercase tracking-tighter">
@@ -242,8 +271,6 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
           </div>
         </section>
 
-        <StatsDashboard data={data} />
-
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="neo-card bg-white space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all overflow-hidden relative p-8">
             <div className="absolute top-0 right-0 p-4 opacity-5">
@@ -288,6 +315,10 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
             </div>
           </div>
         </section>
+      </div>
+
+      <div className="animate-in fade-in slide-in-from-bottom-4">
+        <StatsDashboard data={data} />
       </div>
 
       <div className="neo-card bg-neo-yellow p-8 border-4 border-black text-center text-black shadow-neo relative z-20">

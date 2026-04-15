@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { SnapshotClient } from "./SnapshotClient";
 import { getScanById } from "@/lib/db";
+import { AnalysisResult } from "@/types";
 
 export const runtime = "edge";
 
@@ -45,5 +46,24 @@ export default async function Page({
   params: Promise<{ username: string; id: string }>;
 }) {
   const { username, id } = await params;
-  return <SnapshotClient username={username} id={id} />;
+  const scan = await getScanById(id);
+
+  return (
+    <SnapshotClient
+      username={username}
+      id={id}
+      initialData={
+        scan
+          ? ({
+              ...scan.data,
+              cachedAt: scan.created_at,
+              username: scan.username,
+              snapshotId: scan.id,
+              isHistorical: true,
+              isLocked: true,
+            } as AnalysisResult)
+          : null
+      }
+    />
+  );
 }
