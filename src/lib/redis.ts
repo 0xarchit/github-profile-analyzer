@@ -21,13 +21,38 @@ function normalizeKey(key: string): string {
 }
 
 export async function getCachedData<T>(key: string): Promise<T | null> {
-  if (!isRedisConfigured || !redis) return null;
+  const normalizedKey = normalizeKey(key);
+  if (!isRedisConfigured || !redis) {
+    console.log("[CACHE] Redis not configured - skipping get", {
+      key,
+      normalizedKey,
+    });
+    return null;
+  }
   try {
-    const primary = await redis.get<T>(normalizeKey(key));
-    if (primary !== null) return primary;
-    return await redis.get<T>(key);
+    console.log("[CACHE] Attempting to read from cache", {
+      key,
+      normalizedKey,
+    });
+    const primary = await redis.get<T>(normalizedKey);
+    if (primary !== null) {
+      console.log("[CACHE] Cache hit on primary key", { key, normalizedKey });
+      return primary;
+    }
+    console.log("[CACHE] Primary cache miss, trying fallback", { key });
+    const fallback = await redis.get<T>(key);
+    if (fallback !== null) {
+      console.log("[CACHE] Cache hit on fallback key", { key });
+      return fallback;
+    }
+    console.log("[CACHE] Complete cache miss", { key });
+    return null;
   } catch (err) {
-    console.error("Redis read failure:", err);
+    console.error("[CACHE] Redis read failure", {
+      key,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return null;
   }
 }
@@ -37,11 +62,33 @@ export async function setCachedData(
   data: unknown,
   ttl = CACHE_TTL,
 ): Promise<void> {
-  if (!isRedisConfigured || !redis) return;
-  if (!Number.isFinite(ttl) || ttl <= 0) return;
+  const normalizedKey = normalizeKey(key);
+  if (!isRedisConfigured || !redis) {
+    console.log("[CACHE] Redis not configured - skipping set", {
+      key,
+      normalizedKey,
+      ttl,
+    });
+    return;
+  }
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    console.log("[CACHE] Invalid TTL - skipping set", { key, ttl });
+    return;
+  }
   try {
+    console.log("[CACHE] Writing to cache", {
+      key: normalizedKey,
+      ttl,
+      dataSize: JSON.stringify(data).length,
+    });
     await redis.set(normalizeKey(key), data, { ex: Math.floor(ttl) });
+    console.log("[CACHE] Cache write successful", { key: normalizedKey, ttl });
   } catch (err) {
-    console.error("Redis write failure:", err);
+    console.error("[CACHE] Redis write failure", {
+      key,
+      ttl,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   }
 }

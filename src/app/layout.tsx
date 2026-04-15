@@ -14,6 +14,7 @@ const outfit = Outfit({
 });
 
 import { SessionGuard } from "@/components/SessionGuard";
+import { PdfxThemeProvider } from "@/lib/pdfx-theme-context";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -43,8 +44,10 @@ export default function RootLayout({
       <body
         className={`${bricolage.variable} ${outfit.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
       >
-        <SessionGuard />
-        {children}
+        <PdfxThemeProvider>
+          <SessionGuard />
+          {children}
+        </PdfxThemeProvider>
       </body>
     </html>
   );

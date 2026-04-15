@@ -78,9 +78,9 @@ export const AnalysisResultSchema = z.object({
     })
     .optional(),
 
-  total_stars: z.number().optional(),
-  followers: z.number().optional(),
-  public_repo_count: z.number().optional(),
+  total_stars: z.number().min(0).optional(),
+  followers: z.number().min(0).optional(),
+  public_repo_count: z.number().min(0).optional(),
 
   top_repos: z.array(RepositorySchema).optional(),
   achievements: z.array(z.string()).optional(),

@@ -268,14 +268,14 @@ export function StatsDashboard({ data }: { data: AnalysisResult }) {
           </p>
         </div>
 
-        <div className="flex justify-center w-full overflow-x-auto custom-scrollbar pb-6 sm:pb-8 scrollbar-hide relative z-10">
-          <div className="flex gap-1.5 sm:gap-2 p-6 sm:p-8 bg-neo-bg border-4 border-black shadow-neo-lg hover:rotate-1 transition-transform duration-500 min-w-min">
+        <div className="w-full max-w-full overflow-x-auto overflow-y-hidden pb-4 sm:pb-6 relative z-10">
+          <div className="inline-flex min-w-max gap-1 sm:gap-1.5 p-4 sm:p-6 md:p-8 bg-neo-bg border-4 border-black shadow-neo-lg hover:rotate-1 transition-transform duration-500 mx-auto">
             {calendar_data.weeks.map((week, i) => (
-              <div key={i} className="flex flex-col gap-1.5 sm:gap-2">
+              <div key={i} className="flex flex-col gap-1 sm:gap-1.5">
                 {week.contributionDays.map((day, j) => (
                   <div
                     key={j}
-                    className="w-3 h-3 sm:w-3.5 sm:h-3.5 border-2 border-black/10 transition-all hover:scale-150 hover:z-10 cursor-crosshair hover:border-black"
+                    className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 border border-black/10 sm:border-2 transition-all hover:scale-125 hover:z-10 cursor-crosshair hover:border-black"
                     style={{
                       backgroundColor: getHeatmapColor(day.contributionCount),
                     }}

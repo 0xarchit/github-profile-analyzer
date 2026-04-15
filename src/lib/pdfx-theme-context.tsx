@@ -1,3 +1,5 @@
+"use client";
+
 import { type ReactNode, createContext, useContext } from "react";
 import { theme as defaultTheme } from "./pdfx-theme";
 

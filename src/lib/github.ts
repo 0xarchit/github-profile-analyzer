@@ -86,15 +86,32 @@ async function fetchGitHubGraphQL(
   variables: Record<string, unknown>,
   timeoutMs = GITHUB_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
-  return githubFetchWithTimeout(
-    "https://api.github.com/graphql",
-    {
-      method: "POST",
-      headers: buildGitHubGraphQLHeaders(token),
-      body: JSON.stringify({ query, variables }),
-    },
+  console.log("[GITHUB_API] GraphQL request starting", {
     timeoutMs,
-  );
+    variables: JSON.stringify(variables).slice(0, 100),
+  });
+  try {
+    const response = await githubFetchWithTimeout(
+      "https://api.github.com/graphql",
+      {
+        method: "POST",
+        headers: buildGitHubGraphQLHeaders(token),
+        body: JSON.stringify({ query, variables }),
+      },
+      timeoutMs,
+    );
+    console.log("[GITHUB_API] GraphQL response received", {
+      status: response.status,
+      statusText: response.statusText,
+    });
+    return response;
+  } catch (err) {
+    console.error("[GITHUB_API] GraphQL request failed", {
+      error: err instanceof Error ? err.message : String(err),
+      variables: JSON.stringify(variables).slice(0, 100),
+    });
+    throw err;
+  }
 }
 
 async function checkAchievementStatus(username: string, slug: string) {
@@ -150,10 +167,16 @@ export async function getProfileSummary(
   username: string,
   userToken?: string,
 ): Promise<ProfileSummary> {
+  console.log("[GITHUB_API] getProfileSummary starting", {
+    username,
+    hasUserToken: !!userToken,
+  });
   if (!username || username.toLowerCase() === "undefined") {
+    console.error("[GITHUB_API] Invalid username", { username });
     throw new Error("INVALID_USERNAME");
   }
   const token = userToken || getFallbackToken();
+  console.log("[GITHUB_API] Using token", { hasUserToken: !!userToken });
   const query = `
     query($login: String!) {
       user(login: $login) {
@@ -185,31 +208,54 @@ export async function getProfileSummary(
     }
   `;
 
-  const requestSummary = async (authToken: string) =>
-    fetchGitHubGraphQL(authToken, query, { login: username });
+  const requestSummary = async (authToken: string) => {
+    console.log("[GITHUB_API] Sending profile summary request", { username });
+    return fetchGitHubGraphQL(authToken, query, { login: username });
+  };
 
   let res = await requestSummary(token);
+  console.log("[GITHUB_API] Initial profile request completed", {
+    status: res.status,
+  });
   if (res.status === 401 || res.status === 403) {
+    console.log("[GITHUB_API] Auth failed, retrying with fallback token");
     const retryToken = getFallbackToken();
     res = await requestSummary(retryToken);
+    console.log("[GITHUB_API] Retry request completed", { status: res.status });
     if (res.status === 401 || res.status === 403) {
+      console.error("[GITHUB_API] Both auth attempts failed");
       throw new Error("GITHUB_AUTH_FAILED");
     }
   }
 
   if (!res.ok) {
+    console.error("[GITHUB_API] Profile request failed", {
+      status: res.status,
+    });
     throw new Error(`GitHub API error: HTTP ${res.status}`);
   }
 
+  console.log("[GITHUB_API] Parsing profile response");
   const body = await res.json();
   if (body.errors) {
+    console.error("[GITHUB_API] GraphQL errors in response", {
+      errors: body.errors,
+    });
     if (body.errors[0]?.message.includes("Could not resolve to a User")) {
+      console.error("[GITHUB_API] User not found in GitHub", { username });
       throw new Error("USER_NOT_FOUND");
     }
     throw new Error(`GitHub API error: ${body.errors[0].message}`);
   }
   const user = body.data?.user;
-  if (!user) throw new Error("USER_NOT_FOUND");
+  if (!user) {
+    console.error("[GITHUB_API] No user data in response", { username });
+    throw new Error("USER_NOT_FOUND");
+  }
+  console.log("[GITHUB_API] User data parsed successfully", {
+    username: user.login,
+    repos: user.repositories.nodes.length,
+  });
 
   const coll = user.contributionsCollection;
   const ownedNodes = user.repositories.nodes || [];
@@ -294,14 +340,29 @@ export async function getProfileSummary(
   });
 
   const slugs = Object.keys(badgeAssets);
+  console.log("[GITHUB_API] Checking achievement badges", {
+    badgeCount: slugs.length,
+  });
   const unlocked = await Promise.all(
-    slugs.map((s) => checkAchievementStatus(username, s)),
+    slugs.map((s) => {
+      console.log("[GITHUB_API] Checking achievement", { slug: s });
+      return checkAchievementStatus(username, s);
+    }),
   );
   const badges: Record<string, string> = {};
-  unlocked.filter(Boolean).forEach((s) => {
+  const unlockedBadges = unlocked.filter(Boolean);
+  console.log("[GITHUB_API] Achievement check complete", {
+    unlockedCount: unlockedBadges.length,
+  });
+  unlockedBadges.forEach((s) => {
     if (s) badges[s] = badgeAssets[s];
   });
 
+  console.log("[GITHUB_API] Assembling profile summary", {
+    username: user.login,
+    total_stars,
+    followers: user.followers.totalCount,
+  });
   return {
     avatar: user.avatarUrl,
     username: user.login,
@@ -477,13 +538,19 @@ export async function checkStarStatus(
   username: string,
   userToken?: string,
 ): Promise<boolean> {
+  console.log("[GITHUB_API] checkStarStatus starting", {
+    username,
+    hasUserToken: !!userToken,
+  });
   const normalizedUsername = normalizeUsername(username || "");
   if (
     !normalizedUsername ||
     normalizedUsername === "undefined" ||
     normalizedUsername === "null"
-  )
+  ) {
+    console.log("[GITHUB_API] Invalid username for star check", { username });
     return false;
+  }
   const targetRepo = "0xarchit/github-profile-analyzer";
 
   starGateLog("check_start", {
@@ -566,6 +633,32 @@ export async function verifyAndInjectStar(username: string): Promise<boolean> {
     starGateLog("verify_guest_fail", { username: normalizedUsername });
   }
   return isVerified;
+}
+
+export async function getRepoStarCount(): Promise<number | null> {
+  const url = "https://api.github.com/repos/0xarchit/github-profile-analyzer";
+  const token = GITHUB_TOKENS[0] || "";
+  const headers: HeadersInit = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "GitScore/1.1",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await githubFetchWithTimeout(url, { headers });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as { stargazers_count?: number };
+    return typeof payload.stargazers_count === "number"
+      ? payload.stargazers_count
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function executeBidirectionalStarCheck(

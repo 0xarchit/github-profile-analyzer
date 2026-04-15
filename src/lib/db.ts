@@ -2,14 +2,40 @@ import { neon } from "@neondatabase/serverless";
 import { encrypt, decrypt } from "./encryption";
 import { ValidatedAnalysisResult } from "./validation";
 
-const DATABASE_WRITE = (process.env.DATABASE_WRITE || "").trim();
-const DATABASE_READS = (process.env.DATABASE_READ || "")
+function normalizeDbUrl(rawUrl: string): string {
+  const value = rawUrl.trim();
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value);
+    if (
+      parsed.protocol.startsWith("postgres") &&
+      !parsed.searchParams.has("sslmode")
+    ) {
+      parsed.searchParams.set("sslmode", "require");
+    }
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
+const DATABASE_WRITE = normalizeDbUrl(
+  process.env.DATABASE_WRITE || process.env.DATABASE_URL || "",
+);
+const DATABASE_READS = (
+  process.env.DATABASE_READ ||
+  process.env.DATABASE_READS ||
+  ""
+)
   .split(",")
-  .map((item) => item.trim())
+  .map((item) => normalizeDbUrl(item))
   .filter(Boolean);
 
 if (!DATABASE_WRITE) {
-  throw new Error("DATABASE_WRITE environment variable is required");
+  throw new Error(
+    "Database URL is required. Set DATABASE_WRITE or DATABASE_URL.",
+  );
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -25,7 +51,12 @@ export function getReadSql() {
   if (DATABASE_READS.length === 0) return sql;
   const dbUrl =
     DATABASE_READS[Math.floor(Math.random() * DATABASE_READS.length)];
-  return neon(dbUrl);
+  if (!dbUrl) return sql;
+  try {
+    return neon(dbUrl);
+  } catch {
+    return sql;
+  }
 }
 
 export interface UserSettings {
@@ -103,25 +134,53 @@ async function materializeUser(
 export async function getUserByGithubId(
   githubId: number,
 ): Promise<User | null> {
-  const readSql = getReadSql();
-  const rows =
-    await readSql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
-  return materializeUser(rows[0]);
+  console.log("[DB] getUserByGithubId", { githubId });
+  try {
+    const readSql = getReadSql();
+    const rows =
+      await readSql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
+    console.log("[DB] getUserByGithubId result", { found: rows.length > 0 });
+    return materializeUser(rows[0]);
+  } catch (err) {
+    console.error("[DB] getUserByGithubId failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 export async function getUserById(id: number): Promise<User | null> {
-  const readSql = getReadSql();
-  const rows = await readSql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
-  return materializeUser(rows[0]);
+  console.log("[DB] getUserById", { id });
+  try {
+    const readSql = getReadSql();
+    const rows = await readSql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
+    console.log("[DB] getUserById result", { found: rows.length > 0 });
+    return materializeUser(rows[0]);
+  } catch (err) {
+    console.error("[DB] getUserById failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 export async function getUserByUsername(
   username: string,
 ): Promise<User | null> {
-  const readSql = getReadSql();
-  const rows =
-    await readSql`SELECT * FROM users WHERE LOWER(username) = LOWER(${username}) LIMIT 1`;
-  return materializeUser(rows[0]);
+  console.log("[DB] getUserByUsername", { username });
+  try {
+    const readSql = getReadSql();
+    const rows =
+      await readSql`SELECT * FROM users WHERE LOWER(username) = LOWER(${username}) LIMIT 1`;
+    console.log("[DB] getUserByUsername result", { found: rows.length > 0 });
+    return materializeUser(rows[0]);
+  } catch (err) {
+    console.error("[DB] getUserByUsername failed", {
+      error: err instanceof Error ? err.message : String(err),
+      username,
+    });
+    throw err;
+  }
 }
 export async function upsertUser(user: {
   github_id: number;
@@ -181,51 +240,99 @@ export async function saveScan(
   username: string,
   data: ValidatedAnalysisResult,
 ): Promise<Scan> {
-  const rows = await sql`
-    WITH inserted AS (
-      INSERT INTO scans (user_id, username, data)
-      VALUES (${userId}, ${username}, ${JSON.stringify(data)}::jsonb)
-      RETURNING *
-    ),
-    ranked AS (
-      SELECT id,
-             ROW_NUMBER() OVER (
-               PARTITION BY user_id
-               ORDER BY created_at DESC, id DESC
-             ) AS row_num
-      FROM scans
-      WHERE user_id = ${userId}
-    ),
-    deleted AS (
-      DELETE FROM scans
-      WHERE id IN (SELECT id FROM ranked WHERE row_num > 10)
-      RETURNING id
-    )
-    SELECT * FROM inserted
-  `;
-  return rows[0] as Scan;
+  console.log("[DB] saveScan starting", {
+    userId,
+    username,
+    dataSize: JSON.stringify(data).length,
+  });
+  try {
+    const rows = await sql`
+      WITH inserted AS (
+        INSERT INTO scans (user_id, username, data)
+        VALUES (${userId}, ${username}, ${JSON.stringify(data)}::jsonb)
+        RETURNING *
+      ),
+      ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY user_id
+                 ORDER BY created_at DESC, id DESC
+               ) AS row_num
+        FROM scans
+        WHERE user_id = ${userId}
+      ),
+      deleted AS (
+        DELETE FROM scans
+        WHERE id IN (SELECT id FROM ranked WHERE row_num > 10)
+        RETURNING id
+      )
+      SELECT * FROM inserted
+    `;
+    console.log("[DB] saveScan completed", { scanId: rows[0]?.id });
+    return rows[0] as Scan;
+  } catch (err) {
+    console.error("[DB] saveScan failed", {
+      error: err instanceof Error ? err.message : String(err),
+      userId,
+      username,
+    });
+    throw err;
+  }
 }
 
 export async function getScanById(id: string): Promise<Scan | null> {
-  const readSql = getReadSql();
-  const rows = await readSql`SELECT * FROM scans WHERE id = ${id} LIMIT 1`;
-  return (rows[0] as Scan) || null;
+  console.log("[DB] getScanById", { id });
+  try {
+    const readSql = getReadSql();
+    const rows = await readSql`SELECT * FROM scans WHERE id = ${id} LIMIT 1`;
+    console.log("[DB] getScanById result", { found: rows.length > 0 });
+    return (rows[0] as Scan) || null;
+  } catch (err) {
+    console.error("[DB] getScanById failed", {
+      error: err instanceof Error ? err.message : String(err),
+      id,
+    });
+    throw err;
+  }
 }
 
 export async function getUserScans(userId: number): Promise<Scan[]> {
-  const readSql = getReadSql();
-  return (await readSql`SELECT * FROM scans WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 10`) as Scan[];
+  console.log("[DB] getUserScans", { userId });
+  try {
+    const readSql = getReadSql();
+    const rows =
+      await readSql`SELECT * FROM scans WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 10`;
+    console.log("[DB] getUserScans result", { count: rows.length });
+    return rows as Scan[];
+  } catch (err) {
+    console.error("[DB] getUserScans failed", {
+      error: err instanceof Error ? err.message : String(err),
+      userId,
+    });
+    throw err;
+  }
 }
 
 export async function getLatestSelfScan(
   userId: number,
   username: string,
 ): Promise<Scan | null> {
-  const readSql = getReadSql();
-  const rows = await readSql`
-    SELECT * FROM scans 
-    WHERE user_id = ${userId} AND LOWER(username) = LOWER(${username}) 
-    ORDER BY created_at DESC LIMIT 1
-  `;
-  return (rows[0] as Scan) || null;
+  console.log("[DB] getLatestSelfScan", { userId, username });
+  try {
+    const readSql = getReadSql();
+    const rows = await readSql`
+      SELECT * FROM scans 
+      WHERE user_id = ${userId} AND LOWER(username) = LOWER(${username}) 
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    console.log("[DB] getLatestSelfScan result", { found: rows.length > 0 });
+    return (rows[0] as Scan) || null;
+  } catch (err) {
+    console.error("[DB] getLatestSelfScan failed", {
+      error: err instanceof Error ? err.message : String(err),
+      userId,
+      username,
+    });
+    throw err;
+  }
 }

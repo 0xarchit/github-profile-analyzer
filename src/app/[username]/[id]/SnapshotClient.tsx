@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PDFDownloadLink } from "@react-pdf/renderer";
-import { ProfilePDF } from "@/components/ProfilePDF";
+import { PDFExportButton } from "@/components/PDFExportButton";
 import { Header } from "@/components/Header";
 import { StatsDashboard } from "@/components/StatsDashboard";
-import { Trophy, FileDown, Zap, FolderGit, Star, Clock } from "lucide-react";
+import { Trophy, Zap, FolderGit, Star, Clock } from "lucide-react";
 import { AnalysisResult } from "@/types";
 import { ScanningInterface } from "@/components/ScanningInterface";
 
@@ -77,11 +76,6 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
     }
   };
 
-  const pdfReport = useMemo(() => {
-    if (!data) return null;
-    return <ProfilePDF data={data} />;
-  }, [data]);
-
   if (error)
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-neo-bg">
@@ -142,28 +136,19 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
   if (!data) return <ScanningInterface />;
 
   return (
-    <main className="min-h-screen p-6 md:p-12 bg-neo-bg space-y-12 max-w-7xl mx-auto text-black">
+    <main className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-8 sm:space-y-10 md:space-y-12 w-full max-w-full lg:max-w-7xl mx-auto text-black overflow-x-hidden">
       <Header>
-        {pdfReport && (
-          <PDFDownloadLink
-            document={pdfReport}
-            fileName={`Snapshot_${username}_${id}.pdf`}
-          >
-            {({ loading: pdfLoading }) => (
-              <button
-                className="neo-button bg-neo-blue text-[10px] md:text-sm flex items-center gap-2 group shadow-neo-active hover:shadow-neo transition-all"
-                disabled={pdfLoading}
-              >
-                <FileDown className="w-3 h-3 md:w-4 md:h-4 group-hover:translate-y-0.5" />
-                <span className="hidden sm:inline">Download Archive</span>
-                <span className="sm:hidden">Archive</span>
-              </button>
-            )}
-          </PDFDownloadLink>
+        {data && (
+          <PDFExportButton
+            data={data}
+            filename={`Snapshot_${username}_${id}.pdf`}
+            label="Download Archive"
+            shortLabel="Archive"
+          />
         )}
       </Header>
 
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b-8 border-black pb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8">
         <div className="bg-black text-white px-4 py-2 text-[10px] font-black uppercase shadow-neo flex items-center gap-2">
           <Clock className="w-4 h-4 text-neo-yellow" />
           Historical Archive:{" "}
@@ -186,11 +171,11 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
             <span className="text-sm font-black uppercase mb-4 tracking-[0.5em] opacity-40">
               Engineering Quotient
             </span>
-            <span className="text-[10rem] font-heading leading-tight -mb-10 tracking-tighter drop-shadow-neo relative z-10">
+            <span className="text-[4rem] sm:text-[6rem] md:text-[8rem] lg:text-[10rem] font-heading leading-tight -mb-2 sm:-mb-4 md:-mb-6 lg:-mb-10 tracking-tighter drop-shadow-neo relative z-10">
               {data.score}
             </span>
-            <div className="flex flex-col items-center w-full px-8 mt-12 space-y-4 relative z-10">
-              <div className="w-full h-8 bg-black/10 border-4 border-black box-content flex items-center p-1 overflow-hidden">
+            <div className="flex flex-col items-center w-full px-3 sm:px-4 md:px-6 lg:px-8 mt-3 sm:mt-6 md:mt-8 lg:mt-12 space-y-2 sm:space-y-3 md:space-y-4 relative z-10">
+              <div className="w-full h-3 sm:h-4 md:h-6 lg:h-8 bg-black/10 border-2 sm:border-3 md:border-4 border-black box-content flex items-center p-0.5 sm:p-1 overflow-hidden">
                 <div
                   className="h-full bg-black flex"
                   style={{ width: `${data.score}%` }}
@@ -200,8 +185,8 @@ export function SnapshotClient({ username, id }: SnapshotClientProps) {
                   ))}
                 </div>
               </div>
-              <span className="text-lg font-heading border-4 border-black px-8 py-3 bg-white uppercase shadow-neo-lg flex items-center gap-3">
-                <Trophy className="w-6 h-6 text-neo-yellow fill-neo-yellow" />
+              <span className="text-xs sm:text-sm md:text-base lg:text-lg font-heading border-2 sm:border-3 md:border-4 border-black px-3 sm:px-4 md:px-6 lg:px-8 py-1 sm:py-2 md:py-3 bg-white uppercase shadow-neo-lg flex items-center gap-1.5 sm:gap-2 md:gap-3 text-center line-clamp-2">
+                <Trophy className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-neo-yellow fill-neo-yellow" />
                 {data.developer_type || "Unknown Entity"}
               </span>
             </div>

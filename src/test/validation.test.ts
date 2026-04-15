@@ -50,6 +50,10 @@ describe("Validation Protocol - Zod Schema Validation", () => {
       };
       const result = AnalysisResultSchema.safeParse(data);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.improvement_areas).toEqual([]);
+        expect(result.data.diagnostics).toEqual([]);
+      }
     });
   });
 
@@ -110,6 +114,9 @@ describe("Validation Protocol - Zod Schema Validation", () => {
       const data = { ...validData, improvement_areas: undefined };
       const result = AnalysisResultSchema.safeParse(data);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.improvement_areas).toEqual([]);
+      }
     });
 
     it("should accept empty improvement_areas array", () => {
@@ -122,6 +129,9 @@ describe("Validation Protocol - Zod Schema Validation", () => {
       const data = { ...validData, diagnostics: undefined };
       const result = AnalysisResultSchema.safeParse(data);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.diagnostics).toEqual([]);
+      }
     });
 
     it("should accept large arrays", () => {

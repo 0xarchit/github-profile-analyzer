@@ -21,8 +21,8 @@ interface HeaderProps {
 }
 
 export function Header({ children, floating = false }: HeaderProps) {
-  const [repoStars, setRepoStars] = useState<number | null>(null);
   const [hasStarred, setHasStarred] = useState(false);
+  const [repoStars, setRepoStars] = useState<number | null>(null);
   const [user, setUser] = useState<AuthIdentity | null>(null);
   const router = useRouter();
 
@@ -31,31 +31,13 @@ export function Header({ children, floating = false }: HeaderProps) {
 
     const initialize = async () => {
       try {
-        const repoRes = await fetch(
-          "https://api.github.com/repos/0xarchit/github-profile-analyzer",
-          {
-            signal: controller.signal,
-            cache: "no-store",
-          },
-        );
-        if (repoRes.ok) {
-          const repoData = await repoRes.json();
-          if (typeof repoData?.stargazers_count === "number") {
-            setRepoStars(repoData.stargazers_count);
-          }
-        }
-
         const authIdentity = await fetchAuthIdentity(controller.signal);
         setUser(authIdentity);
 
-        if (!authIdentity) {
-          setHasStarred(false);
-          return;
-        }
-
-        if (authIdentity.isGuest) {
+        if (authIdentity?.isGuest) {
           setHasStarred(true);
-          return;
+        } else if (!authIdentity) {
+          setHasStarred(false);
         }
 
         const starRes = await fetch("/api/star-status", {
@@ -64,14 +46,28 @@ export function Header({ children, floating = false }: HeaderProps) {
           credentials: "same-origin",
         });
         if (!starRes.ok) {
-          setHasStarred(false);
+          if (!authIdentity?.isGuest) {
+            setHasStarred(false);
+          }
+          setRepoStars(null);
           return;
         }
 
         const starData = await starRes.json();
-        setHasStarred(Boolean(starData?.hasStarred));
-      } catch {
+        if (typeof starData?.repoStars === "number") {
+          setRepoStars(starData.repoStars);
+        } else {
+          setRepoStars(null);
+        }
+
+        if (authIdentity && !authIdentity.isGuest) {
+          setHasStarred(Boolean(starData?.hasStarred));
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Header initialization failed:", err);
         setHasStarred(false);
+        setRepoStars(null);
       }
     };
 
@@ -93,11 +89,8 @@ export function Header({ children, floating = false }: HeaderProps) {
   };
 
   const headerClasses = floating
-    ? "absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-center gap-4 z-50"
-    : "flex flex-col md:flex-row justify-between items-center gap-4 z-50 border-b-8 border-black pb-8 w-full";
-
-  const containerClasses =
-    "flex flex-col md:flex-row items-center gap-4 w-full justify-between";
+    ? "absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 z-50"
+    : "flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-50 border-b-8 border-black pb-6 md:pb-8 w-full";
 
   return (
     <motion.header
@@ -105,111 +98,107 @@ export function Header({ children, floating = false }: HeaderProps) {
       animate={{ y: 0, opacity: 1 }}
       className={headerClasses}
     >
-      <div className={containerClasses}>
-        <div className="flex items-center gap-3">
-          <motion.button
-            whileHover={{ scale: 1.05, x: 2, y: 2 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => router.push("/")}
-            className="neo-card py-2 px-3 md:px-4 bg-white flex items-center gap-2 hover:shadow-neo-active transition-all group border-[3px]"
-          >
-            <div className="w-2 h-2 bg-neo-green rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-            <Home className="w-5 h-5 text-black" />
-            <span className="text-[10px] md:text-xs font-black uppercase tracking-tighter">
-              GitScore Protocol
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+        <motion.button
+          whileHover={{ scale: 1.05, x: 2, y: 2 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => router.push("/")}
+          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center gap-2 hover:shadow-neo-active transition-all group border-[3px] text-[10px] md:text-xs"
+        >
+          <div className="w-2 h-2 bg-neo-green rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+          <Home className="w-4 h-4 md:w-5 md:h-5 flex-shrink-0" />
+          <span className="font-black uppercase tracking-tighter hidden xs:inline">
+            GitScore Protocol
+          </span>
+        </motion.button>
+
+        <motion.a
+          whileHover={{ scale: 1.05, x: 2, y: 2 }}
+          whileTap={{ scale: 0.95 }}
+          href="https://github.com/0xarchit/github-profile-analyzer"
+          target="_blank"
+          className="neo-card py-2 px-3 md:px-4 bg-white flex items-center gap-2 hover:shadow-neo-active transition-all group border-[3px]"
+          rel="noopener noreferrer"
+          aria-label="Open GitHub repository: github-profile-analyzer (opens in new tab)"
+        >
+          <FolderGit className="w-4 h-4 md:w-5 md:h-5 group-hover:rotate-12 transition-transform flex-shrink-0" />
+          <div className="flex items-center gap-1.5 bg-black text-white px-2 py-0.5 border-2 border-neo-blue text-[10px] md:text-xs font-heading">
+            {hasStarred ? (
+              <CheckCircle className="w-3 h-3 text-neo-green fill-neo-green flex-shrink-0" />
+            ) : (
+              <Star className="w-3 h-3 fill-neo-yellow text-neo-yellow animate-pulse flex-shrink-0" />
+            )}
+            <span className="tabular-nums">
+              {repoStars !== null ? repoStars.toLocaleString() : "★"}
             </span>
-          </motion.button>
+          </div>
+        </motion.a>
+      </div>
 
-          <motion.a
-            whileHover={{ scale: 1.05, x: 2, y: 2 }}
-            whileTap={{ scale: 0.95 }}
-            href="https://github.com/0xarchit/github-profile-analyzer"
-            target="_blank"
-            className="neo-card py-2 px-3 md:px-4 bg-white flex items-center gap-2 hover:shadow-neo-active transition-all group border-[3px]"
-            rel="noopener noreferrer"
-          >
-            <FolderGit className="w-4 h-4 md:w-5 md:h-5 group-hover:rotate-12 transition-transform" />
-            <div className="flex items-center gap-1.5 bg-black text-white px-2 py-0.5 border-2 border-neo-blue">
-              {hasStarred ? (
-                <CheckCircle className="w-3 h-3 text-neo-green fill-neo-green" />
-              ) : (
-                <Star className="w-3 h-3 fill-neo-yellow text-neo-yellow animate-pulse" />
-              )}
-              <span className="text-[10px] md:text-xs font-heading tabular-nums">
-                {repoStars ?? "..."}
-              </span>
-            </div>
-          </motion.a>
-        </div>
+      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+        {children && <div className="flex gap-2 flex-wrap">{children}</div>}
 
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          {children && <div className="flex gap-2">{children}</div>}
+        <div className="w-px h-6 bg-black/10 hidden md:block" />
 
-          <div className="w-px h-6 bg-black/10 hidden md:block" />
+        {user ? (
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+            <motion.button
+              whileHover={{ scale: 1.05, x: 2, y: 2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => router.push("/settings")}
+              className="neo-button py-2 px-3 md:px-4 bg-neo-yellow text-[9px] md:text-[10px] shadow-neo-active flex items-center gap-1 sm:gap-2 group border-[3px] whitespace-nowrap"
+            >
+              <SettingsIcon className="w-3 h-3 group-hover:rotate-90 transition-transform flex-shrink-0" />
+              <span className="hidden sm:inline">Config</span>
+            </motion.button>
 
-          {user ? (
-            <div className="flex items-center gap-3">
-              <motion.button
-                whileHover={{ scale: 1.05, x: 2, y: 2 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => router.push("/settings")}
-                className="neo-button py-2 px-3 md:px-4 bg-neo-yellow text-[9px] md:text-[10px] shadow-neo-active flex items-center gap-2 group border-[3px]"
-              >
-                <SettingsIcon className="w-3 h-3 group-hover:rotate-90 transition-transform" />
-                <span className="hidden sm:inline">User Config</span>
-                <span className="sm:hidden">Settings</span>
-              </motion.button>
-
-              <div className="neo-card py-1 px-2 md:py-1.5 md:px-3 bg-white flex items-center gap-2 shadow-neo border-[3px]">
-                {user.avatarUrl && (
-                  <div className="relative">
-                    <Image
-                      src={user.avatarUrl}
-                      alt="Profile"
-                      width={32}
-                      height={32}
-                      className="w-6 h-6 md:w-8 md:h-8 border-2 border-black relative z-10"
-                    />
-                    <div className="absolute inset-0 bg-neo-blue -translate-x-1 -translate-y-1 z-0" />
-                  </div>
-                )}
-                <div className="hidden lg:block">
-                  <p className="text-[10px] font-black uppercase leading-tight">
-                    {user.username}
-                  </p>
-                  <p className="text-[8px] font-bold text-neo-green uppercase leading-tight tracking-[0.2em]">
-                    {user.isGuest ? "Guest" : "Authorized"}
-                  </p>
+            <div className="neo-card py-1 px-2 md:py-1.5 md:px-3 bg-white flex items-center gap-1 sm:gap-2 shadow-neo border-[3px] text-[9px] md:text-[10px]">
+              {user.avatarUrl && (
+                <div className="relative flex-shrink-0">
+                  <Image
+                    src={user.avatarUrl}
+                    alt="Profile"
+                    width={32}
+                    height={32}
+                    className="w-6 h-6 md:w-8 md:h-8 border-2 border-black relative z-10"
+                  />
+                  <div className="absolute inset-0 bg-neo-blue -translate-x-1 -translate-y-1 z-0" />
                 </div>
+              )}
+              <div className="hidden lg:block">
+                <p className="font-black uppercase leading-tight text-[9px]">
+                  {user.username}
+                </p>
+                <p className="text-[7px] font-bold text-neo-green uppercase leading-tight tracking-[0.1em]">
+                  {user.isGuest ? "Guest" : "Auth"}
+                </p>
               </div>
-
-              <motion.button
-                whileHover={{ scale: 1.05, x: 2, y: 2 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleLogout}
-                className="neo-button py-2 px-3 md:px-4 bg-black text-white text-[9px] md:text-[10px] shadow-neo-active flex items-center gap-2 group border-[3px] border-neo-pink"
-              >
-                <Power className="w-3 h-3 group-hover:rotate-90 transition-transform text-neo-pink" />
-                <span className="hidden sm:inline">Terminate Node</span>
-                <span className="sm:hidden">Logoff</span>
-              </motion.button>
             </div>
-          ) : (
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = "/api/auth/github";
-                }}
-                className="neo-button py-2 px-4 md:px-6 bg-neo-blue text-xs flex items-center gap-2 group shadow-neo-lg"
-              >
-                <LogIn className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                <span className="hidden sm:inline">Integrate GitHub</span>
-                <span className="sm:hidden">Integrate</span>
-              </button>
-            </motion.div>
-          )}
-        </div>
+
+            <motion.button
+              whileHover={{ scale: 1.05, x: 2, y: 2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLogout}
+              className="neo-button py-2 px-3 md:px-4 bg-black text-white text-[9px] md:text-[10px] shadow-neo-active flex items-center gap-1 sm:gap-2 group border-[3px] border-neo-pink whitespace-nowrap"
+            >
+              <Power className="w-3 h-3 group-hover:rotate-90 transition-transform text-neo-pink flex-shrink-0" />
+              <span className="hidden sm:inline">Logoff</span>
+            </motion.button>
+          </div>
+        ) : (
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              window.location.href = "/api/auth/github";
+            }}
+            className="neo-button py-2 px-3 md:px-4 bg-neo-blue text-[9px] md:text-xs flex items-center gap-1 sm:gap-2 group shadow-neo-lg whitespace-nowrap"
+          >
+            <LogIn className="w-3 h-3 md:w-4 md:h-4 group-hover:-translate-x-1 transition-transform flex-shrink-0" />
+            <span className="hidden sm:inline">Connect</span>
+          </motion.button>
+        )}
       </div>
     </motion.header>
   );

@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, Variants } from "framer-motion";
-import { PDFDownloadLink } from "@react-pdf/renderer";
-import { ProfilePDF } from "@/components/ProfilePDF";
+import { PDFExportButton } from "@/components/PDFExportButton";
 import { Header } from "@/components/Header";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { ScanningInterface } from "@/components/ScanningInterface";
 import {
   Trophy,
   RefreshCw,
-  FileDown,
   Lock,
   Zap,
   FolderGit,
@@ -105,11 +103,6 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
       setIsVerifyingAgain(false);
     }
   };
-
-  const pdfReport = useMemo(() => {
-    if (!data) return null;
-    return <ProfilePDF data={data} />;
-  }, [data]);
 
   if (error) {
     const isQuota = error === "NEURAL_QUOTA_EXCEEDED";
@@ -241,27 +234,16 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-6 sm:space-y-8 md:space-y-12 lg:space-y-16 w-screen sm:w-full overflow-x-hidden max-w-full lg:max-w-7xl mx-auto protocol-noise"
+      className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-6 sm:space-y-8 md:space-y-12 lg:space-y-16 w-full max-w-full lg:max-w-7xl mx-auto relative overflow-x-clip protocol-noise"
     >
       <Header>
-        {pdfReport && (
-          <PDFDownloadLink
-            document={pdfReport}
-            fileName={`Analysis_${username}.pdf`}
-          >
-            {({ loading }) => (
-              <button
-                className="neo-button bg-neo-blue text-[10px] md:text-sm disabled:opacity-50 flex items-center gap-2 group shadow-neo-active hover:shadow-neo transition-all"
-                disabled={loading}
-              >
-                <FileDown className="w-3 h-3 md:w-4 md:h-4 group-hover:translate-y-0.5 transition-transform" />
-                <span className="hidden sm:inline">
-                  {loading ? "Compiling..." : "Intel.Export()"}
-                </span>
-                <span className="sm:hidden">Export</span>
-              </button>
-            )}
-          </PDFDownloadLink>
+        {data && (
+          <PDFExportButton
+            data={data}
+            filename={`Analysis_${username}.pdf`}
+            label="Intel.Export()"
+            shortLabel="Export"
+          />
         )}
 
         {(data.isLocked || data.isHistorical) && (
@@ -291,9 +273,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
       <motion.div
         variants={itemVariants}
-        className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative"
+        className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden"
       >
-        <div className="flex items-center gap-2 sm:gap-3 absolute -top-2 -left-2 sm:-left-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="bg-neo-green text-black px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase shadow-neo">
             Identity Verified
           </div>
@@ -305,7 +287,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
           )}
         </div>
 
-        <div className="space-y-1 mt-4 md:mt-0">
+        <div className="space-y-1 md:mt-0">
           <h1 className="text-2xl sm:text-4xl md:text-5xl font-heading uppercase tracking-tighter leading-none">
             {username}&apos;s <span className="text-neo-pink">Protocol</span>
           </h1>
@@ -402,17 +384,17 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
       <motion.section
         variants={itemVariants}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 w-full"
       >
-        <div className="neo-card bg-white space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all overflow-hidden relative p-8">
+        <div className="neo-card bg-white space-y-4 sm:space-y-5 md:space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all overflow-hidden relative p-4 sm:p-6 md:p-8">
           <div className="absolute top-0 right-0 p-4 opacity-5">
             <Trophy className="w-32 h-32" />
           </div>
-          <h3 className="text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-3 relative z-10">
+          <h3 className="text-2xl sm:text-2.5xl md:text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-2 sm:gap-3 relative z-10 flex-wrap">
             <Trophy className="w-8 h-8 fill-neo-yellow" />
             Neural achievements
           </h3>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 relative z-10">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4 relative z-10">
             {data.badges &&
               Object.entries(data.badges).map(([slug, asset], i) => (
                 <div
@@ -445,9 +427,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
           </div>
         </div>
 
-        <div className="neo-card bg-[#f8fafc] space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all relative p-8">
-          <h3 className="text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-neo-yellow fill-neo-yellow" />
+        <div className="neo-card bg-[#f8fafc] space-y-4 sm:space-y-5 md:space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all relative p-4 sm:p-6 md:p-8">
+          <h3 className="text-2xl sm:text-2.5xl md:text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+            <Trophy className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-neo-yellow fill-neo-yellow" />
             GitHub Trophies
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -477,9 +459,9 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
           </div>
         </div>
 
-        <div className="neo-card bg-[#f8fafc] space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all relative p-8">
-          <h3 className="text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-3">
-            <FolderGit className="w-8 h-8" />
+        <div className="neo-card bg-[#f8fafc] space-y-4 sm:space-y-5 md:space-y-6 border-4 shadow-neo hover:shadow-neo-lg transition-all relative p-4 sm:p-6 md:p-8">
+          <h3 className="text-2xl sm:text-2.5xl md:text-3xl font-heading uppercase border-b-4 border-black pb-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+            <FolderGit className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
             Strategic Growth
           </h3>
           <div className="space-y-4">
