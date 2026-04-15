@@ -12,25 +12,20 @@ export async function POST(request: Request) {
     }
 
     const cleanUsername = username.trim();
-    console.info("Guest verify request", {
-      username: cleanUsername.toLowerCase(),
-    });
+    const requestId = crypto.randomUUID();
+    console.info("guest-verify-request", { requestId });
 
     const isVerified = await verifyAndInjectStar(cleanUsername);
 
     if (isVerified) {
       await createGuestSession(cleanUsername);
-      console.info("Guest verify success", {
-        username: cleanUsername.toLowerCase(),
-      });
+      console.info("guest-verify-success", { requestId });
       return NextResponse.json({
         success: true,
         message: "Verified securely.",
       });
     } else {
-      console.warn("Guest verify failed", {
-        username: cleanUsername.toLowerCase(),
-      });
+      console.warn("guest-verify-failed", { requestId });
       return NextResponse.json(
         {
           error: "Star not found",

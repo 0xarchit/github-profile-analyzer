@@ -50,7 +50,7 @@ export interface Scan {
   id: string;
   user_id: number;
   username: string;
-  data: ValidatedAnalysisResult;
+  data: ValidatedAnalysisResult & { isStarred?: boolean; cachedAt?: string };
   created_at: string;
 }
 
@@ -155,6 +155,20 @@ export async function updateUserSettings(
 ): Promise<void> {
   const safeSettings = normalizeSettingsPatch(settings);
   if (Object.keys(safeSettings).length === 0) return;
+
+  if (safeSettings.primary_scan_id) {
+    const scanRows = await sql`
+      SELECT 1
+      FROM scans
+      WHERE id = ${safeSettings.primary_scan_id}
+        AND user_id = ${userId}
+      LIMIT 1
+    `;
+    if (scanRows.length === 0) {
+      throw new Error("INVALID_PRIMARY_SCAN");
+    }
+  }
+
   await sql`
     UPDATE users 
       SET settings = COALESCE(settings, '{}'::jsonb) || ${JSON.stringify(safeSettings)}::jsonb

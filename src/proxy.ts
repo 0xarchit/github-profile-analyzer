@@ -95,7 +95,9 @@ export default async function proxy(request: NextRequest) {
 
         const forwarded = request.headers.get("x-forwarded-for");
         const realIp = request.headers.get("x-real-ip");
-        const ip = forwarded?.split(",")[0] || realIp || "127.0.0.1";
+        const ip = forwarded
+          ? forwarded.split(",").pop()?.trim() || realIp || "127.0.0.1"
+          : realIp || "127.0.0.1";
 
         const { success } = await ratelimit.limit(ip);
 
@@ -128,10 +130,12 @@ export default async function proxy(request: NextRequest) {
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",
   );
-  response.headers.set(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com; font-src 'self' data:;",
-  );
+  const cspPolicy =
+    process.env.NODE_ENV === "production"
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com; font-src 'self' data:;"
+      : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com; font-src 'self' data:;";
+
+  response.headers.set("Content-Security-Policy", cspPolicy);
 
   return response;
 }

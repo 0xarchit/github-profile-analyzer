@@ -14,7 +14,7 @@ We take security seriously and will respond promptly.
 
 ## Security Best Practices
 
-This project implements:
+This project is designed to implement:
 
 - **JWT Authentication**: Secure token-based authentication
 - **Encryption**: AES-256-GCM encryption for sensitive data

@@ -180,10 +180,10 @@ describe("Validation Protocol - Zod Schema Validation", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept negative star count", () => {
-      const valid = { ...validData, total_stars: -5 };
-      const result = AnalysisResultSchema.safeParse(valid);
-      expect(result.success).toBe(true);
+    it("should reject negative star count", () => {
+      const invalid = { ...validData, total_stars: -5 };
+      const result = AnalysisResultSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
 
     it("should accept valid follower count", () => {
@@ -192,10 +192,10 @@ describe("Validation Protocol - Zod Schema Validation", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept negative followers", () => {
-      const valid = { ...validData, followers: -10 };
-      const result = AnalysisResultSchema.safeParse(valid);
-      expect(result.success).toBe(true);
+    it("should reject negative followers", () => {
+      const invalid = { ...validData, followers: -10 };
+      const result = AnalysisResultSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
   });
 

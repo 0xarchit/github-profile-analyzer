@@ -16,6 +16,7 @@ export async function GET() {
   (await cookies()).set("oauth_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     maxAge: 600,
     path: "/",
   });
@@ -23,7 +24,7 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: "read:user,repo,read:models",
+    scope: ["read:user", "repo", "read:models"].join(" "),
     state,
   });
 

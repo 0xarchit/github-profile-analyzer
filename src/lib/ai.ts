@@ -29,7 +29,7 @@ function minifyProfile(profile: ProfileSummary) {
     l: r.primary_lang,
   }));
 
-  const or = allRepos.slice(20).map((r) => [r.n, r.stars, r.primary_lang]);
+  const or = allRepos.slice(20, 100).map((r) => [r.n, r.stars, r.primary_lang]);
 
   return {
     u: {
@@ -90,25 +90,34 @@ Return format:
 }
 IMPORTANT: Always return 'developer_type' as a direct child of the root object. You MUST generate exactly 3 unique project ideas in the 'project_ideas' object. Do not leave any fields empty.`;
 
-  const response = await fetch(
-    "https://models.github.ai/inference/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      "https://models.github.ai/inference/chat/completions",
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({
+          model: GITHUB_MODEL,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: JSON.stringify(minified) },
+          ],
+          response_format: { type: "json_object" },
+        }),
       },
-      body: JSON.stringify({
-        model: GITHUB_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: JSON.stringify(minified) },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    },
-  );
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const error = await response.text();

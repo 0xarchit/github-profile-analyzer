@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     viewerUser && targetUser && viewerUser.id === targetUser.id,
   );
 
-  if (force && !nosave && targetUser) {
+  if (force && targetUser) {
     if (!isOwnerOfTarget) {
       return NextResponse.json(
         {

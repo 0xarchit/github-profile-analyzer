@@ -130,8 +130,25 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await res.json();
+    if (result.errors?.length) {
+      return new Response(
+        JSON.stringify({
+          error: result.errors[0]?.message ?? "GitHub API error",
+        }),
+        {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (!result.data?.user) {
+      return new Response(JSON.stringify({ error: "USER_NOT_FOUND" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     const weeks =
-      result.data?.user?.contributionsCollection?.contributionCalendar?.weeks ||
+      result.data.user.contributionsCollection?.contributionCalendar?.weeks ||
       [];
 
     const cellSize = 10;

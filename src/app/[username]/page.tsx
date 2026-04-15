@@ -1,18 +1,23 @@
-import { Metadata } from 'next';
-import { ProfileClient } from './ProfileClient';
-import { getUserByUsername, getLatestSelfScan } from '@/lib/db';
+import { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { ProfileClient } from "./ProfileClient";
+import { getUserByUsername, getLatestSelfScan } from "@/lib/db";
 
-export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
   const { username } = await params;
   const user = await getUserByUsername(username);
   let score = 0;
-  let devType = 'Developer';
+  let devType = "Developer";
 
   if (user) {
     const scan = await getLatestSelfScan(user.id, username);
     if (scan) {
       score = scan.data.score;
-      devType = scan.data.developer_type || 'Developer';
+      devType = scan.data.developer_type || "Developer";
     }
   }
 
@@ -28,7 +33,7 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
       images: [`/api/og?username=${username}&score=${score}`],
     },
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       title,
       description,
       images: [`/api/og?username=${username}&score=${score}`],
@@ -36,7 +41,15 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   };
 }
 
-export default async function Page({ params }: { params: Promise<{ username: string }> }) {
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
   const { username } = await params;
+  const user = await getUserByUsername(username);
+  if (!user) {
+    notFound();
+  }
   return <ProfileClient username={username} />;
 }

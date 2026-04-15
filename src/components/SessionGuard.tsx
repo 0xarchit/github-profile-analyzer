@@ -11,9 +11,9 @@ export function SessionGuard() {
   useEffect(() => {
     const isProtected = pathname === "/settings";
 
-    const checkSession = async () => {
+    const checkSession = async (force = false) => {
       const now = Date.now();
-      if (now - lastCheck.current < 30000) return;
+      if (!force && now - lastCheck.current < 30000) return;
       lastCheck.current = now;
 
       try {
@@ -35,9 +35,17 @@ export function SessionGuard() {
       }
     };
 
-    checkSession();
+    if (isProtected) {
+      checkSession(true);
+    } else {
+      void checkSession();
+    }
 
-    const handleFocus = () => checkSession();
+    const handleFocus = () => {
+      if (isProtected) {
+        void checkSession();
+      }
+    };
     window.addEventListener("focus", handleFocus);
 
     return () => {

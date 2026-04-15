@@ -64,11 +64,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     await updateUserSettings(user.id, parsed.data);
-    const updatedUser = await getUserByGithubId(session.githubId);
 
     return NextResponse.json({
       success: true,
-      settings: updatedUser?.settings ?? user.settings,
+      settings: {
+        ...user.settings,
+        ...parsed.data,
+      },
     });
   } catch (err: unknown) {
     const error =

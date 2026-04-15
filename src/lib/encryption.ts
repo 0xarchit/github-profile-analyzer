@@ -6,13 +6,16 @@ if (!ENCRYPTION_SECRET) {
   );
 }
 
-if (ENCRYPTION_SECRET.length !== 64) {
+if (!/^[0-9a-fA-F]{64}$/.test(ENCRYPTION_SECRET)) {
   throw new Error(
     "CRITICAL_SECURITY_FAILURE: ENCRYPTION_SECRET must be a 32-byte hex string (64 characters).",
   );
 }
 
 function hexToUint8Array(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error("INVALID_HEX");
+  }
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
@@ -61,7 +64,7 @@ export async function encrypt(text: string): Promise<string> {
 
 export async function decrypt(hash: string): Promise<string> {
   if (!hash.includes(":")) {
-    return hash;
+    throw new Error("DECRYPTION_FAILURE: Expected encrypted payload.");
   }
 
   try {

@@ -307,13 +307,16 @@ export async function getProfileSummary(
         const m: Record<string, number> = {};
         weeks.forEach((w) =>
           w.contributionDays.forEach((d: ContributionDay) => {
-            const mon = new Date(d.date).toLocaleString("default", {
-              month: "short",
-            });
-            m[mon] = (m[mon] || 0) + d.contributionCount;
+            const date = new Date(d.date);
+            const key = `${date.getUTCFullYear()}-${String(
+              date.getUTCMonth() + 1,
+            ).padStart(2, "0")}`;
+            m[key] = (m[key] || 0) + d.contributionCount;
           }),
         );
-        return Object.entries(m).map(([month, count]) => ({ month, count }));
+        return Object.entries(m)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([month, count]) => ({ month, count }));
       })(coll.contributionCalendar.weeks),
       trophies,
     },

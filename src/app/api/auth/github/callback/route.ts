@@ -30,10 +30,13 @@ export async function GET(request: Request) {
   }
 
   try {
+    const signal = AbortSignal.timeout(10_000);
+
     const tokenRes = await fetch(
       "https://github.com/login/oauth/access_token",
       {
         method: "POST",
+        signal,
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
@@ -58,6 +61,7 @@ export async function GET(request: Request) {
     const accessToken = tokenData.access_token;
 
     const userRes = await fetch("https://api.github.com/user", {
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "User-Agent": "GitScore",

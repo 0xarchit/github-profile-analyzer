@@ -10,9 +10,14 @@ export async function GET() {
     return NextResponse.json({ hasStarred: false });
   }
 
-  const hasStarred = await checkStarStatus(
-    session.username,
-    session.accessToken,
-  );
-  return NextResponse.json({ hasStarred });
+  try {
+    const hasStarred = await checkStarStatus(
+      session.username,
+      session.accessToken,
+    );
+    return NextResponse.json({ hasStarred });
+  } catch (error) {
+    console.error("Star status lookup failed:", error);
+    return NextResponse.json({ hasStarred: false });
+  }
 }

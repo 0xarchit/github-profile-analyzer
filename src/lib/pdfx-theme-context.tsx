@@ -1,4 +1,10 @@
-import { type ReactNode, createContext, useContext } from "react";
+import {
+  type DependencyList,
+  type ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+} from "react";
 import { theme as defaultTheme } from "./pdfx-theme";
 
 type PdfxTheme = typeof defaultTheme;
@@ -20,21 +26,9 @@ export function PdfxThemeProvider({ theme, children }: PdfxThemeProviderProps) {
 }
 
 export function usePdfxTheme(): PdfxTheme {
-  try {
-    return useContext(PdfxThemeContext);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      /invalid hook call|useContext|cannot read properties of null/i.test(
-        error.message,
-      )
-    ) {
-      return defaultTheme;
-    }
-    throw error;
-  }
+  return useContext(PdfxThemeContext);
 }
 
-export function useSafeMemo<T>(factory: () => T): T {
-  return factory();
+export function useSafeMemo<T>(factory: () => T, deps: DependencyList): T {
+  return useMemo(factory, deps);
 }

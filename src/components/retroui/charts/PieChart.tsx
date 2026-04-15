@@ -31,6 +31,8 @@ const PieChart = React.forwardRef<HTMLDivElement, PieChartProps>(
       dataKey,
       nameKey,
       colors = ["#ec4899", "#0ea5e9", "#facc15", "#22c55e", "#a855f7"],
+      tooltipBgColor = "#ffffff",
+      tooltipBorderColor = "#000000",
       valueFormatter = (value: number) => value.toString(),
       showTooltip = true,
       innerRadius = 0,
@@ -73,7 +75,13 @@ const PieChart = React.forwardRef<HTMLDivElement, PieChartProps>(
                   if (!active || !payload?.length) return null;
                   const entry = payload[0];
                   return (
-                    <div className="neo-card p-3 shadow-neo border-[3px] bg-white min-w-30">
+                    <div
+                      className="neo-card p-3 shadow-neo border-[3px] min-w-30"
+                      style={{
+                        backgroundColor: tooltipBgColor,
+                        borderColor: tooltipBorderColor,
+                      }}
+                    >
                       <p className="text-[10px] uppercase font-black mb-2 border-b-2 border-black pb-1">
                         {String(entry.name)}
                       </p>

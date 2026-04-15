@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   FolderGit,
@@ -94,11 +93,11 @@ export function Header({ children, floating = false }: HeaderProps) {
   };
 
   const headerClasses = floating
-    ? "absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-center gap-4 z-50 pointer-events-none"
+    ? "absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-center gap-4 z-50"
     : "flex flex-col md:flex-row justify-between items-center gap-4 z-50 border-b-8 border-black pb-8 w-full";
 
   const containerClasses =
-    "flex flex-col md:flex-row items-center gap-4 w-full justify-between pointer-events-auto";
+    "flex flex-col md:flex-row items-center gap-4 w-full justify-between";
 
   return (
     <motion.header
@@ -197,14 +196,14 @@ export function Header({ children, floating = false }: HeaderProps) {
             </div>
           ) : (
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Link
+              <a
                 href="/api/auth/github"
                 className="neo-button py-2 px-4 md:px-6 bg-neo-blue text-xs flex items-center gap-2 group shadow-neo-lg"
               >
                 <LogIn className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="hidden sm:inline">Integrate GitHub</span>
                 <span className="sm:hidden">Integrate</span>
-              </Link>
+              </a>
             </motion.div>
           )}
         </div>

@@ -35,10 +35,14 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
       index,
       categories = [],
       strokeColors = ["#ec4899", "#0ea5e9", "#facc15", "#22c55e"],
+      tooltipBgColor = "#ffffff",
+      tooltipBorderColor = "#000000",
       gridColor = "rgba(0,0,0,0.1)",
       valueFormatter = (value: number) => value.toString(),
       showGrid = true,
       showTooltip = true,
+      strokeWidth = 4,
+      dotSize = 6,
       className,
       ...props
     },
@@ -74,7 +78,13 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
                 content={({ active, payload, label }) => {
                   if (!active || !payload) return null;
                   return (
-                    <div className="neo-card p-3 shadow-neo border-[3px] bg-white min-w-[120px]">
+                    <div
+                      className="neo-card p-3 shadow-neo border-[3px] min-w-30"
+                      style={{
+                        backgroundColor: tooltipBgColor,
+                        borderColor: tooltipBorderColor,
+                      }}
+                    >
                       <p className="text-[10px] uppercase font-black mb-2 border-b-2 border-black pb-1">
                         {label}
                       </p>
@@ -102,8 +112,8 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
               />
             )}
 
-            {categories.map((category, index) => {
-              const strokeColor = strokeColors[index] || strokeColors[0];
+            {categories.map((category, idx) => {
+              const strokeColor = strokeColors[idx] || strokeColors[0];
 
               return (
                 <Line
@@ -111,15 +121,15 @@ const LineChart = React.forwardRef<HTMLDivElement, LineChartProps>(
                   type="monotone"
                   dataKey={category}
                   stroke={strokeColor}
-                  strokeWidth={4}
+                  strokeWidth={strokeWidth}
                   dot={{
-                    r: 6,
+                    r: dotSize,
                     fill: "#ffffff",
                     stroke: strokeColor,
                     strokeWidth: 3,
                   }}
                   activeDot={{
-                    r: 8,
+                    r: dotSize + 2,
                     fill: strokeColor,
                     stroke: "#000000",
                     strokeWidth: 2,

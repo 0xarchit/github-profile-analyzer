@@ -28,9 +28,14 @@ export default function Home() {
   const handleAnalyze = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = username.trim().toLowerCase();
-    if (clean && clean !== "undefined" && clean !== "null") {
+    if (
+      clean &&
+      clean !== "undefined" &&
+      clean !== "null" &&
+      !/[/?#]/.test(clean)
+    ) {
       setInputError(null);
-      router.push(`/${clean}`);
+      router.push(`/${encodeURIComponent(clean)}`);
     } else {
       setInputError(
         "IDENTIFIER_INVALID: Target must be a valid GitHub handle.",
@@ -144,7 +149,7 @@ export default function Home() {
             </div>
             {isVersionClickExpanded && (
               <div
-                className="fixed inset-0 z-40"
+                className="fixed inset-0 z-0 cursor-default"
                 onClick={() => {
                   setIsVersionClickExpanded(false);
                   setIsVersionExpanded(false);
@@ -199,6 +204,7 @@ export default function Home() {
           {user && (
             <div className="flex justify-center space-x-8">
               <button
+                type="button"
                 onClick={() => router.push(`/${user.username}`)}
                 className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink tracking-widest group"
               >

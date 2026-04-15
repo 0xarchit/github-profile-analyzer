@@ -131,6 +131,12 @@ export default function SettingsPage() {
                 <button
                   onClick={toggleLock}
                   disabled={updating}
+                  aria-label={
+                    data.settings.profile_locked
+                      ? "Unlock profile"
+                      : "Lock profile"
+                  }
+                  aria-pressed={data.settings.profile_locked}
                   className={`neo-button p-3 ${data.settings.profile_locked ? "bg-neo-green" : "bg-white"} shadow-neo-active hover:shadow-neo transition-all`}
                 >
                   {data.settings.profile_locked ? (
@@ -154,6 +160,12 @@ export default function SettingsPage() {
                 <button
                   onClick={toggleHistory}
                   disabled={updating}
+                  aria-label={
+                    data.settings.keep_history
+                      ? "Disable scan history"
+                      : "Enable scan history"
+                  }
+                  aria-pressed={data.settings.keep_history}
                   className={`neo-button p-3 ${data.settings.keep_history ? "bg-neo-green" : "bg-white"} shadow-neo-active hover:shadow-neo transition-all`}
                 >
                   {data.settings.keep_history ? (
@@ -176,6 +188,12 @@ export default function SettingsPage() {
                 <button
                   onClick={togglePublicScans}
                   disabled={updating}
+                  aria-label={
+                    data.settings.public_scans
+                      ? "Disable public scans"
+                      : "Enable public scans"
+                  }
+                  aria-pressed={data.settings.public_scans}
                   className={`neo-button p-3 ${data.settings.public_scans ? "bg-neo-green" : "bg-white"} shadow-neo-active hover:shadow-neo transition-all`}
                 >
                   {data.settings.public_scans ? (

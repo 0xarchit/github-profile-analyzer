@@ -18,8 +18,6 @@ interface BarChartProps extends React.HTMLAttributes<HTMLDivElement> {
   categories: string[];
   strokeColors?: string[];
   fillColors?: string[];
-  tooltipBgColor?: string;
-  tooltipBorderColor?: string;
   gridColor?: string;
   valueFormatter?: (value: number) => string;
   showGrid?: boolean;
@@ -130,9 +128,9 @@ const BarChart = React.forwardRef<HTMLDivElement, BarChartProps>(
               />
             )}
 
-            {categories.map((category, index) => {
-              const fillColor = fillColors[index] || fillColors[0];
-              const strokeColor = strokeColors[index] || strokeColors[0];
+            {categories.map((category, catIdx) => {
+              const fillColor = fillColors[catIdx] || fillColors[0];
+              const strokeColor = strokeColors[catIdx] || strokeColors[0];
 
               return (
                 <Bar
