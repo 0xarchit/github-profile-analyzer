@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+@theme {
+  --font-heading: var(--font-bricolage), system-ui;
+  --font-body: var(--font-outfit), system-ui;
+  --radius: var(--radius);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-neo-bg: var(--background);
+  --color-neo-yellow: var(--primary);
+  --color-neo-orange: #f97316;
+  --color-neo-green: #22c55e;
+  --color-neo-pink: #ec4899;
+  --color-neo-blue: #0ea5e9;
+  --color-neo-purple: #a855f7;
+  --shadow-neo: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  --shadow-neo-lg: 10px 10px 0px 0px rgba(0, 0, 0, 1);
+  --shadow-neo-active: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+:root {
+  --radius: 0px;
+  --background: #fdfcf0;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --primary: #facc15;
+  --primary-hover: #eab308;
+  --primary-foreground: #000000;
+  --secondary: #000000;
+  --secondary-foreground: #ffffff;
+  --muted: #e8e6d8;
+  --muted-foreground: #4b5563;
+  --accent: #fde047;
+  --accent-foreground: #000000;
+  --destructive: #e63946;
+  --destructive-foreground: #ffffff;
+  --border: #000000;
+  --tracking-tightest: -0.04em;
+  --tracking-tighter: -0.02em;
+  --ease-neo: cubic-bezier(0.87, 0, 0.13, 1);
+}
+
+@keyframes scan-dash {
+  from {
+    stroke-dashoffset: 40;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes terminal-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes noise-anim {
+  0% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-1%, -1%);
+  }
+  20% {
+    transform: translate(-2%, 1%);
+  }
+  30% {
+    transform: translate(1%, -1%);
+  }
+  40% {
+    transform: translate(-1%, 2%);
+  }
+  50% {
+    transform: translate(-2%, 1%);
+  }
+  60% {
+    transform: translate(2%, 1%);
+  }
+  70% {
+    transform: translate(1%, -2%);
+  }
+  80% {
+    transform: translate(-1%, 1%);
+  }
+  90% {
+    transform: translate(2%, -1%);
+  }
+  100% {
+    transform: translate(1%, 1%);
+  }
+}
+
+.animate-scan-dash {
+  animation: scan-dash 3s linear infinite;
+}
+
+.animate-terminal-blink {
+  animation: terminal-blink 0.6s step-start infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.6s var(--ease-neo) forwards;
+}
+
+.protocol-noise::after {
+  content: "";
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background-image: url("/carbon-fibre.png");
+  opacity: 0.03;
+  animation: noise-anim 0.2s infinite;
+  pointer-events: none;
+}
+
+.protocol-noise {
+  position: relative;
+  overflow: hidden;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-neo-bg);
+    color: black;
+  }
+}
+
+@layer components {
+  .neo-box {
+    border-width: 4px;
+    border-style: solid;
+    border-color: black;
+    background-color: white;
+    box-shadow: var(--shadow-neo);
+  }
+
+  .neo-button {
+    border-width: 4px;
+    border-style: solid;
+    border-color: black;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    transition: all 0.2s var(--ease-neo);
+    box-shadow: var(--shadow-neo);
+    cursor: pointer;
+  }
+
+  .neo-button:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+  }
+
+  .neo-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  }
+
+  .neo-card {
+    border-width: 4px;
+    border-style: solid;
+    border-color: black;
+    padding: 1.5rem;
+    background-color: white;
+    box-shadow: var(--shadow-neo-lg);
+    transition: all 0.3s var(--ease-neo);
+  }
+
+  .neo-card:hover {
+    transform: translate(-4px, -4px);
+    box-shadow: 14px 14px 0px 0px rgba(0, 0, 0, 1);
+  }
+
+  .neo-card:active {
+    transform: translate(2px, 2px);
+    box-shadow: var(--shadow-neo-active);
+  }
+
+  .neo-input {
+    border-width: 4px;
+    border-style: solid;
+    border-color: black;
+    padding: 1rem;
+    background-color: white;
+    font-family: var(--font-body);
+  }
+
+  .neo-input:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--color-neo-yellow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
