@@ -304,7 +304,7 @@ function MetricCard({
           {label}
         </p>
         {labelSub && (
-          <p className="text-[6px] sm:text-[7px] font-bold text-neo-pink uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity duration-300 line-clamp-2">
+          <p className="text-[8px] sm:text-[9px] font-bold text-neo-pink uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity duration-300 line-clamp-2">
             {labelSub}
           </p>
         )}
@@ -335,7 +335,7 @@ function StreakBox({
         <p className="text-xs sm:text-sm font-black uppercase leading-tight tracking-[0.15em] sm:tracking-[0.2em]">
           {label}
         </p>
-        <p className="text-[7px] sm:text-[8px] font-bold uppercase opacity-40">
+        <p className="text-[8px] sm:text-[9px] font-bold uppercase opacity-40">
           {unit}
         </p>
       </div>
