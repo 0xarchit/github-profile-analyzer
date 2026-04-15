@@ -54,7 +54,7 @@ function applySecurityHeaders(
   return response;
 }
 
-export default async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const origin = request.headers.get("origin");
@@ -105,7 +105,7 @@ export default async function proxy(request: NextRequest) {
       } catch (err) {
         if (process.env.NODE_ENV !== "production") {
           const tokenPreview = `${sessionToken.slice(0, 8)}...`;
-          console.debug("[PROXY] JWT verification failed", {
+          console.debug("[MIDDLEWARE] JWT verification failed", {
             tokenPreview,
             error: err instanceof Error ? err.message : String(err),
           });
