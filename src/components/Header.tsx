@@ -101,7 +101,7 @@ export function Header({ children, floating = false }: HeaderProps) {
       }
       setLogoutError(null);
       const authIdentity = await fetchAuthIdentity();
-      setUser(authIdentity);
+      setUser(authIdentity && !authIdentity.isGuest ? authIdentity : null);
       router.push("/");
       router.refresh();
     } catch (err: unknown) {
