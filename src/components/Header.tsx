@@ -94,16 +94,15 @@ export function Header({ children, floating = false }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
+      setLogoutError(null);
       const response = await fetch("/api/auth/logout", { method: "POST" });
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || "Logout Failure");
       }
-      setLogoutError(null);
-      const authIdentity = await fetchAuthIdentity();
-      setUser(authIdentity && !authIdentity.isGuest ? authIdentity : null);
-      router.push("/");
+      setUser(null);
       router.refresh();
+      router.push("/");
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error("Logout Failure");
       console.error("Logout failed:", error.message);
