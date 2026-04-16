@@ -100,7 +100,8 @@ export function Header({ children, floating = false }: HeaderProps) {
         throw new Error(message || "Logout Failure");
       }
       setLogoutError(null);
-      setUser(null);
+      const authIdentity = await fetchAuthIdentity();
+      setUser(authIdentity);
       router.push("/");
       router.refresh();
     } catch (err: unknown) {
