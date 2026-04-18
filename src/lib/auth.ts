@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { sendTelegramAlert } from "./telegram-alert";
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
@@ -57,7 +58,12 @@ export async function getGuestSession(): Promise<string | null> {
       return payload.username as string;
     }
     return null;
-  } catch {
+  } catch (error) {
+    await sendTelegramAlert({
+      source: "AUTH_GET_GUEST_SESSION",
+      message: "Guest session verification failed",
+      error,
+    });
     return null;
   }
 }
@@ -66,7 +72,12 @@ export async function verifySession(token: string): Promise<Session | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     return payload as unknown as Session;
-  } catch {
+  } catch (error) {
+    await sendTelegramAlert({
+      source: "AUTH_VERIFY_SESSION",
+      message: "Session verification failed",
+      error,
+    });
     return null;
   }
 }

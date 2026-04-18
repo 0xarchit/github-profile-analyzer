@@ -5,6 +5,7 @@ import {
   GithubRepoNode,
 } from "@/types";
 import { getCachedData, setCachedData } from "@/lib/redis";
+import { sendTelegramAlert } from "@/lib/telegram-alert";
 
 const GITHUB_TOKENS = (process.env.GITHUB_TOKENS || "")
   .split(",")
@@ -199,6 +200,12 @@ export async function getProfileSummary(
   });
   if (!username || username.toLowerCase() === "undefined") {
     console.error("[GITHUB_API] Invalid username", { username });
+    await sendTelegramAlert({
+      source: "GITHUB_PROFILE_SUMMARY",
+      message: "Invalid username supplied",
+      error: new Error("INVALID_USERNAME"),
+      context: { username },
+    });
     throw new Error("INVALID_USERNAME");
   }
   const token = userToken || getFallbackToken();
@@ -250,6 +257,12 @@ export async function getProfileSummary(
     console.log("[GITHUB_API] Retry request completed", { status: res.status });
     if (res.status === 401 || res.status === 403) {
       console.error("[GITHUB_API] Both auth attempts failed");
+      await sendTelegramAlert({
+        source: "GITHUB_PROFILE_SUMMARY",
+        message: "GitHub auth failed for profile summary",
+        error: new Error("GITHUB_AUTH_FAILED"),
+        context: { username, status: res.status },
+      });
       throw new Error("GITHUB_AUTH_FAILED");
     }
   }
@@ -257,6 +270,12 @@ export async function getProfileSummary(
   if (!res.ok) {
     console.error("[GITHUB_API] Profile request failed", {
       status: res.status,
+    });
+    await sendTelegramAlert({
+      source: "GITHUB_PROFILE_SUMMARY",
+      message: "Profile request failed",
+      error: new Error(`GitHub API error: HTTP ${res.status}`),
+      context: { username, status: res.status },
     });
     throw new Error(`GitHub API error: HTTP ${res.status}`);
   }
@@ -269,13 +288,31 @@ export async function getProfileSummary(
     });
     if (body.errors[0]?.message.includes("Could not resolve to a User")) {
       console.error("[GITHUB_API] User not found in GitHub", { username });
+      await sendTelegramAlert({
+        source: "GITHUB_PROFILE_SUMMARY",
+        message: "User not found in GitHub",
+        error: new Error("USER_NOT_FOUND"),
+        context: { username },
+      });
       throw new Error("USER_NOT_FOUND");
     }
+    await sendTelegramAlert({
+      source: "GITHUB_PROFILE_SUMMARY",
+      message: "GraphQL error while fetching profile",
+      error: new Error(body.errors[0]?.message || "graphql_error"),
+      context: { username },
+    });
     throw new Error(`GitHub API error: ${body.errors[0].message}`);
   }
   const user = body.data?.user;
   if (!user) {
     console.error("[GITHUB_API] No user data in response", { username });
+    await sendTelegramAlert({
+      source: "GITHUB_PROFILE_SUMMARY",
+      message: "No user data in response",
+      error: new Error("USER_NOT_FOUND"),
+      context: { username },
+    });
     throw new Error("USER_NOT_FOUND");
   }
   console.log("[GITHUB_API] User data parsed successfully", {
@@ -631,6 +668,12 @@ export async function checkStarStatus(
     return isVerified;
   } catch (err) {
     console.error("Optimized star check error:", err);
+    await sendTelegramAlert({
+      source: "STAR_CHECK",
+      message: "Optimized star check error",
+      error: err,
+      context: { username: normalizedUsername },
+    });
     starGateLog("check_error", {
       username: normalizedUsername,
       message: toErrorMessage(err),

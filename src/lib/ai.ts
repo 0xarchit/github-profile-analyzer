@@ -1,5 +1,6 @@
 import { AnalysisResultSchema, ValidatedAnalysisResult } from "./validation";
 import { ProfileSummary } from "@/types";
+import { sendTelegramAlert, TelegramAlertCollector } from "./telegram-alert";
 
 const GITHUB_PAT_TOKENS = (process.env.GITHUB_PAT_TOKENS || "")
   .split(",")
@@ -19,6 +20,13 @@ function getFallbackKey(): string {
 }
 
 export type AIAnalysis = ValidatedAnalysisResult;
+
+type AlertedError = Error & { __alertSent?: boolean };
+
+function markAlertSent(error: Error): Error {
+  (error as AlertedError).__alertSent = true;
+  return error;
+}
 
 function minifyProfile(profile: ProfileSummary) {
   const allRepos = [
@@ -103,6 +111,7 @@ async function callAIWithTimeout(
 export async function getAIAnalysis(
   profile: ProfileSummary,
   userToken?: string,
+  alertCollector?: TelegramAlertCollector,
 ): Promise<AIAnalysis> {
   console.log("[AI_ANALYSIS] Starting AI analysis", {
     username: profile.username,
@@ -194,7 +203,24 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       attempts: AI_RETRY_ATTEMPTS,
       lastError: lastError?.message,
     });
-    throw lastError || new Error("AI API request failed after all retries");
+    const alertPayload = {
+      source: "AI_ANALYSIS",
+      message: "All retry attempts failed",
+      error: lastError || new Error("AI API request failed after all retries"),
+      context: {
+        username: profile.username,
+        model: GITHUB_MODEL,
+        attempts: AI_RETRY_ATTEMPTS,
+      },
+    };
+    if (alertCollector) {
+      alertCollector.add(alertPayload);
+    } else {
+      await sendTelegramAlert(alertPayload);
+    }
+    const baseError =
+      lastError || new Error("AI API request failed after all retries");
+    throw markAlertSent(baseError);
   }
 
   if (!response || !response.ok) {
@@ -203,8 +229,26 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       status: response?.status,
       error: errorText.slice(0, 200),
     });
-    throw new Error(
-      `AI API error: ${response?.status || "unknown"} - ${errorText}`,
+    const alertPayload = {
+      source: "AI_ANALYSIS",
+      message: "AI API returned non-OK status",
+      error: new Error(`AI API error: ${response?.status || "unknown"}`),
+      context: {
+        username: profile.username,
+        model: GITHUB_MODEL,
+        status: response?.status,
+        errorText: errorText.slice(0, 500),
+      },
+    };
+    if (alertCollector) {
+      alertCollector.add(alertPayload);
+    } else {
+      await sendTelegramAlert(alertPayload);
+    }
+    throw markAlertSent(
+      new Error(
+        `AI API error: ${response?.status || "unknown"} - ${errorText}`,
+      ),
     );
   }
 
@@ -217,7 +261,23 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
   });
   if (!content) {
     console.error("[AI_ANALYSIS] Empty content from AI response", { data });
-    throw new Error("CORRUPT_INTELLIGENCE: Empty AI response content.");
+    const alertPayload = {
+      source: "AI_ANALYSIS",
+      message: "Empty AI response content",
+      error: new Error("CORRUPT_INTELLIGENCE: Empty AI response content."),
+      context: {
+        username: profile.username,
+        model: GITHUB_MODEL,
+      },
+    };
+    if (alertCollector) {
+      alertCollector.add(alertPayload);
+    } else {
+      await sendTelegramAlert(alertPayload);
+    }
+    throw markAlertSent(
+      new Error("CORRUPT_INTELLIGENCE: Empty AI response content."),
+    );
   }
 
   try {
@@ -256,8 +316,25 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       contentPreview: content.slice(0, 300),
       stack: err instanceof Error ? err.stack : undefined,
     });
-    throw new Error(
-      "CORRUPT_INTELLIGENCE: The AI response failed structural validation protocols.",
+    const alertPayload = {
+      source: "AI_ANALYSIS",
+      message: "Response parsing/validation failure",
+      error: err,
+      context: {
+        username: profile.username,
+        model: GITHUB_MODEL,
+        contentPreview: content.slice(0, 500),
+      },
+    };
+    if (alertCollector) {
+      alertCollector.add(alertPayload);
+    } else {
+      await sendTelegramAlert(alertPayload);
+    }
+    throw markAlertSent(
+      new Error(
+        "CORRUPT_INTELLIGENCE: The AI response failed structural validation protocols.",
+      ),
     );
   }
 }
