@@ -95,14 +95,18 @@ export async function reportClientError(
   const url = sanitizeValue(input.url, 500);
   const userAgent = sanitizeValue(input.userAgent, 400);
 
-  await sendTelegramAlert({
-    source,
-    message,
-    error: stack || message,
-    context: {
-      digest,
-      url,
-      userAgent,
-    },
-  });
+  try {
+    await sendTelegramAlert({
+      source,
+      message,
+      error: stack || message,
+      context: {
+        digest,
+        url,
+        userAgent,
+      },
+    });
+  } catch (err) {
+    console.error("[CLIENT_ERROR_ALERT] Failed to send alert", err);
+  }
 }
