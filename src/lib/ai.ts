@@ -90,7 +90,7 @@ async function dispatchAlert(
     collector.add(payload);
     return;
   }
-  await sendTelegramAlert(payload);
+  void sendTelegramAlert(payload).catch(() => null);
 }
 
 async function callAIWithTimeout(

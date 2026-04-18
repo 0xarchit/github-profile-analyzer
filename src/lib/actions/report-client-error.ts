@@ -16,22 +16,36 @@ const ALERT_WINDOW_MS = 60_000;
 const ALERT_MAX_PER_WINDOW = 8;
 const alertWindowStore = new Map<string, { count: number; resetAt: number }>();
 
-function getRequesterKey(
-  clientHeaders: Headers,
-  input: ClientAlertInput,
-): string {
+function getRequesterKey(clientHeaders: Headers): string {
   const forwardedFor =
     clientHeaders.get("x-forwarded-for") ||
     clientHeaders.get("x-real-ip") ||
     "unknown";
   const ip = forwardedFor.split(",")[0]?.trim() || "unknown";
-  const ua = clientHeaders.get("user-agent") || input.userAgent || "unknown";
-  const digest = input.digest || "no-digest";
-  return `${ip}:${ua.slice(0, 60)}:${digest.slice(0, 40)}`;
+  const ua = clientHeaders.get("user-agent") || "unknown";
+  return `${ip}:${ua.slice(0, 60)}`;
+}
+
+async function hashKey(key: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
 }
 
 function isLimited(key: string): boolean {
   const now = Date.now();
+
+  for (const [storedKey, storedState] of alertWindowStore) {
+    if (storedState.resetAt <= now) {
+      alertWindowStore.delete(storedKey);
+    }
+  }
+
   const state = alertWindowStore.get(key);
 
   if (!state || state.resetAt <= now) {
@@ -63,10 +77,11 @@ export async function reportClientError(
   input: ClientAlertInput,
 ): Promise<void> {
   const clientHeaders = await headers();
-  const requesterKey = getRequesterKey(clientHeaders, input);
+  const requesterKey = getRequesterKey(clientHeaders);
   if (isLimited(requesterKey)) {
+    const hashedKey = await hashKey(requesterKey);
     console.warn("[CLIENT_ERROR_ALERT] Rate limited", {
-      requesterKey,
+      fingerprint: hashedKey,
       source: input.source || "CLIENT_ERROR",
     });
     return;
