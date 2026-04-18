@@ -111,14 +111,14 @@ export function Header({ children, floating = false }: HeaderProps) {
   };
 
   const headerClasses = floating
-    ? "absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 z-50"
-    : "flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-50 border-b-8 border-black pb-6 md:pb-8 w-full";
+    ? "absolute top-2 left-2 right-2 sm:top-4 sm:left-4 sm:right-4 md:top-6 md:left-6 md:right-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6 z-50"
+    : "flex flex-col md:flex-row justify-between items-start md:items-center gap-6 z-50 border-b-8 border-black pb-8 md:pb-10 w-full";
 
   return (
     <header
       className={`${headerClasses} animate-in fade-in slide-in-from-top-4`}
     >
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto *:w-full sm:*:w-auto">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4 w-full sm:w-auto *:w-full sm:*:w-auto">
         <button
           onClick={() => router.push("/")}
           className="neo-card py-2 px-3 md:px-4 bg-white flex items-center justify-center gap-2 hover:shadow-neo-active hover:scale-105 active:scale-95 transition-all group border-[3px] text-[10px] md:text-xs"
@@ -151,9 +151,9 @@ export function Header({ children, floating = false }: HeaderProps) {
         </a>
       </div>
 
-      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 sm:gap-3 w-full">
+      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-3 sm:gap-4 w-full">
         {children && (
-          <div className="flex items-center justify-center gap-2 w-full *:flex-1 *:min-w-0 sm:w-auto sm:flex-wrap sm:justify-end sm:*:flex-none sm:*:min-w-fit">
+          <div className="flex items-center justify-center gap-2 sm:gap-3 w-full *:flex-1 *:min-w-0 sm:w-auto sm:flex-wrap sm:justify-end sm:*:flex-none sm:*:min-w-fit">
             {children}
           </div>
         )}
@@ -163,14 +163,15 @@ export function Header({ children, floating = false }: HeaderProps) {
         {user ? (
           <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
             <button
+              aria-label="Open settings"
               onClick={() => router.push("/settings")}
-              className="neo-button py-2 px-3 md:px-4 bg-neo-yellow text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 sm:gap-2 group border-[3px] whitespace-nowrap w-full sm:w-auto transition-all"
+              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-neo-yellow text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] whitespace-nowrap w-full sm:w-auto transition-all"
             >
-              <SettingsIcon className="w-3 h-3 group-hover:rotate-90 transition-transform shrink-0" />
+              <SettingsIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3 group-hover:rotate-90 transition-transform shrink-0" />
               <span className="hidden sm:inline">Config</span>
             </button>
 
-            <div className="neo-card py-1 px-2 md:py-1.5 md:px-3 bg-white flex items-center justify-center gap-1 sm:gap-2 shadow-neo border-[3px] text-[9px] md:text-[10px] w-full sm:w-auto">
+            <div className="neo-card py-1 px-1.5 sm:py-1 sm:px-2 md:py-1.5 md:px-3 bg-white flex items-center justify-center gap-1 shadow-neo border-[3px] text-[8px] sm:text-[9px] md:text-[10px] w-full sm:w-auto">
               {user.avatarUrl && (
                 <div className="relative shrink-0">
                   <Image
@@ -178,13 +179,13 @@ export function Header({ children, floating = false }: HeaderProps) {
                     alt="Profile"
                     width={32}
                     height={32}
-                    className="w-6 h-6 md:w-8 md:h-8 border-2 border-black relative z-10"
+                    className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 border-2 border-black relative z-10"
                   />
                   <div className="absolute inset-0 bg-neo-blue -translate-x-1 -translate-y-1 z-0" />
                 </div>
               )}
-              <div className="hidden lg:block">
-                <p className="font-black uppercase leading-tight text-[9px]">
+              <div className="hidden md:block">
+                <p className="font-black uppercase leading-tight text-[8px] sm:text-[9px]">
                   {user.username}
                 </p>
                 <p className="text-[7px] font-bold text-neo-green uppercase leading-tight tracking-widest">
@@ -194,22 +195,24 @@ export function Header({ children, floating = false }: HeaderProps) {
             </div>
 
             <button
+              aria-label="Log off"
               onClick={handleLogout}
-              className="neo-button py-2 px-3 md:px-4 bg-black text-white text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 sm:gap-2 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto transition-all"
+              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-black text-white text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto transition-all"
             >
-              <Power className="w-3 h-3 group-hover:rotate-90 transition-transform text-neo-pink shrink-0" />
+              <Power className="w-2.5 h-2.5 sm:w-3 sm:h-3 group-hover:rotate-90 transition-transform text-neo-pink shrink-0" />
               <span className="hidden sm:inline">Logoff</span>
             </button>
           </div>
         ) : (
           <button
             type="button"
+            aria-label="Connect GitHub account"
             onClick={() => {
               window.location.href = "/api/auth/github";
             }}
-            className="neo-button py-2 px-3 md:px-4 bg-neo-blue text-[9px] md:text-xs flex items-center justify-center gap-1 sm:gap-2 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto hover:scale-105 active:scale-95 transition-all"
+            className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-neo-blue text-[8px] sm:text-[9px] md:text-xs flex items-center justify-center gap-1 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto hover:scale-105 active:scale-95 transition-all border-[3px]"
           >
-            <LogIn className="w-3 h-3 md:w-4 md:h-4 group-hover:-translate-x-1 transition-transform shrink-0" />
+            <LogIn className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 group-hover:-translate-x-1 transition-transform shrink-0" />
             <span className="hidden sm:inline">Connect</span>
           </button>
         )}
