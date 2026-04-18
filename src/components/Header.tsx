@@ -163,8 +163,9 @@ export function Header({ children, floating = false }: HeaderProps) {
         {user ? (
           <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
             <button
+              aria-label="Open settings"
               onClick={() => router.push("/settings")}
-              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 bg-neo-yellow text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] whitespace-nowrap w-full sm:w-auto transition-all"
+              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-neo-yellow text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] whitespace-nowrap w-full sm:w-auto transition-all"
             >
               <SettingsIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3 group-hover:rotate-90 transition-transform shrink-0" />
               <span className="hidden sm:inline">Config</span>
@@ -194,8 +195,9 @@ export function Header({ children, floating = false }: HeaderProps) {
             </div>
 
             <button
+              aria-label="Log off"
               onClick={handleLogout}
-              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 bg-black text-white text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto transition-all"
+              className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-black text-white text-[8px] sm:text-[9px] md:text-[10px] shadow-neo-active hover:scale-105 active:scale-95 flex items-center justify-center gap-1 group border-[3px] border-neo-pink whitespace-nowrap w-full sm:w-auto transition-all"
             >
               <Power className="w-2.5 h-2.5 sm:w-3 sm:h-3 group-hover:rotate-90 transition-transform text-neo-pink shrink-0" />
               <span className="hidden sm:inline">Logoff</span>
@@ -204,10 +206,11 @@ export function Header({ children, floating = false }: HeaderProps) {
         ) : (
           <button
             type="button"
+            aria-label="Connect GitHub account"
             onClick={() => {
               window.location.href = "/api/auth/github";
             }}
-            className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 bg-neo-blue text-[8px] sm:text-[9px] md:text-xs flex items-center justify-center gap-1 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto hover:scale-105 active:scale-95 transition-all border-[3px]"
+            className="neo-button py-1.5 px-2 sm:py-2 sm:px-3 md:px-4 min-h-11 min-w-11 bg-neo-blue text-[8px] sm:text-[9px] md:text-xs flex items-center justify-center gap-1 group shadow-neo-lg whitespace-nowrap w-full sm:w-auto hover:scale-105 active:scale-95 transition-all border-[3px]"
           >
             <LogIn className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 group-hover:-translate-x-1 transition-transform shrink-0" />
             <span className="hidden sm:inline">Connect</span>

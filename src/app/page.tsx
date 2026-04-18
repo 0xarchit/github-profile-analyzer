@@ -217,7 +217,7 @@ export default function Home() {
                 </div>
                 Analyze Internal Profile
               </button>
-              <div className="w-px h-8 bg-black/10" />
+              <div className="hidden sm:block w-px h-8 bg-black/10" />
               <div className="text-xs font-black uppercase flex items-center gap-2 opacity-50">
                 <div className="p-1 border-2 border-black/20">
                   <Power className="w-4 h-4" />
