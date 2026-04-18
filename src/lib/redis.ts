@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { sendTelegramAlert } from "./telegram-alert";
 
 const UPSTASH_URL = (process.env.UPSTASH_URL || "").trim();
 const UPSTASH_TOKEN = (process.env.UPSTASH_TOKEN || "").trim();
@@ -53,6 +54,12 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
+    void sendTelegramAlert({
+      source: "REDIS_READ",
+      message: "Redis read failure",
+      error: err,
+      context: { key, normalizedKey },
+    }).catch(() => null);
     return null;
   }
 }
@@ -90,5 +97,11 @@ export async function setCachedData(
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
+    void sendTelegramAlert({
+      source: "REDIS_WRITE",
+      message: "Redis write failure",
+      error: err,
+      context: { key, normalizedKey, ttl },
+    }).catch(() => null);
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAndInjectStar } from "@/lib/github";
 import { createGuestSession } from "@/lib/auth";
+import { sendTelegramAlert } from "@/lib/telegram-alert";
 
 export const runtime = "edge";
 
@@ -39,6 +40,11 @@ export async function POST(request: Request) {
     const error =
       err instanceof Error ? err : new Error("Unknown verification error");
     console.error("Verify-Guest Security Incident:", error.message);
+    await sendTelegramAlert({
+      source: "AUTH_VERIFY_GUEST",
+      message: "Guest verification protocol failure",
+      error,
+    });
     return NextResponse.json(
       { error: "Verification protocol failure" },
       { status: 500 },

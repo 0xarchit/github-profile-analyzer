@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { upsertUser } from "@/lib/db";
 import { createSession } from "@/lib/auth";
+import { sendTelegramAlert } from "@/lib/telegram-alert";
 
 export const runtime = "edge";
 
@@ -97,6 +98,12 @@ export async function GET(request: Request) {
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error("Auth failed");
     console.error("Critical Auth Failure:", error.message);
+    await sendTelegramAlert({
+      source: "AUTH_GITHUB_CALLBACK",
+      message: "Critical auth callback failure",
+      error,
+      context: { hasCode: Boolean(code), hasState: Boolean(state) },
+    });
     (await cookies()).delete("oauth_state");
     return NextResponse.redirect(`${APP_URL}/?error=authentication_failed`);
   }

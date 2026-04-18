@@ -1,3 +1,5 @@
+import { sendTelegramAlert } from "./telegram-alert";
+
 const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET;
 
 if (!ENCRYPTION_SECRET) {
@@ -45,21 +47,30 @@ async function getKey(): Promise<CryptoKey> {
 }
 
 export async function encrypt(text: string): Promise<string> {
-  const key = await getKey();
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const encoded = new TextEncoder().encode(text);
+  try {
+    const key = await getKey();
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+    const encoded = new TextEncoder().encode(text);
 
-  const encryptedBuffer = await crypto.subtle.encrypt(
-    { name: ALGORITHM_NAME, iv, tagLength: TAG_LENGTH * 8 } as AesGcmParams,
-    key,
-    encoded as unknown as BufferSource,
-  );
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: ALGORITHM_NAME, iv, tagLength: TAG_LENGTH * 8 } as AesGcmParams,
+      key,
+      encoded as unknown as BufferSource,
+    );
 
-  const fullArray = new Uint8Array(encryptedBuffer);
-  const ciphertext = fullArray.slice(0, -TAG_LENGTH);
-  const authTag = fullArray.slice(-TAG_LENGTH);
+    const fullArray = new Uint8Array(encryptedBuffer);
+    const ciphertext = fullArray.slice(0, -TAG_LENGTH);
+    const authTag = fullArray.slice(-TAG_LENGTH);
 
-  return `${uint8ArrayToHex(iv)}:${uint8ArrayToHex(authTag)}:${uint8ArrayToHex(ciphertext)}`;
+    return `${uint8ArrayToHex(iv)}:${uint8ArrayToHex(authTag)}:${uint8ArrayToHex(ciphertext)}`;
+  } catch (error) {
+    void sendTelegramAlert({
+      source: "ENCRYPTION",
+      message: "Encryption failed",
+      error,
+    }).catch(() => null);
+    throw error;
+  }
 }
 
 export async function decrypt(hash: string): Promise<string> {
@@ -90,7 +101,12 @@ export async function decrypt(hash: string): Promise<string> {
     );
 
     return new TextDecoder().decode(decryptedBuffer);
-  } catch {
+  } catch (error) {
+    void sendTelegramAlert({
+      source: "DECRYPTION",
+      message: "Decryption failed",
+      error,
+    }).catch(() => null);
     throw new Error(
       "DECRYPTION_FAILURE: Authentication failed or corrupt payload.",
     );

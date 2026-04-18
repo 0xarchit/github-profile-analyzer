@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { checkStarStatus, getRepoStarCount } from "@/lib/github";
+import { sendTelegramAlert } from "@/lib/telegram-alert";
 
 export const runtime = "edge";
 
@@ -25,6 +26,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ hasStarred, repoStars });
   } catch (error) {
     console.error("Star status lookup failed:", error);
+    void sendTelegramAlert({
+      source: "STAR_STATUS_ROUTE",
+      message: "Star status lookup failed",
+      error,
+      context: { username: session.username },
+    }).catch(() => null);
     return NextResponse.json({ hasStarred: false, repoStars });
   }
 }
