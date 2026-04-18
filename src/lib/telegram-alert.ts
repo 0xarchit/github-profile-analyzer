@@ -125,6 +125,9 @@ async function sendRawTelegramText(
     return;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
   try {
     const response = await fetch(
       `https://api.telegram.org/bot${token}/sendMessage`,
@@ -138,6 +141,7 @@ async function sendRawTelegramText(
           text,
           disable_web_page_preview: true,
         }),
+        signal: controller.signal,
       },
     );
 
@@ -152,10 +156,16 @@ async function sendRawTelegramText(
       }
     }
   } catch (error) {
-    console.error("[TELEGRAM_ALERT] Network failure", error);
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error("[TELEGRAM_ALERT] Timeout", { timeoutMs: 10_000 });
+    } else {
+      console.error("[TELEGRAM_ALERT] Network failure", error);
+    }
     if (options?.throwOnFailure) {
       throw error;
     }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

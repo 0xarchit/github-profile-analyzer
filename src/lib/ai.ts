@@ -1,6 +1,10 @@
 import { AnalysisResultSchema, ValidatedAnalysisResult } from "./validation";
 import { ProfileSummary } from "@/types";
-import { sendTelegramAlert, TelegramAlertCollector } from "./telegram-alert";
+import {
+  sendTelegramAlert,
+  TelegramAlertCollector,
+  TelegramAlertInput,
+} from "./telegram-alert";
 
 const GITHUB_PAT_TOKENS = (process.env.GITHUB_PAT_TOKENS || "")
   .split(",")
@@ -76,6 +80,17 @@ function sanitizeContentPreview(content: string): string {
     .replace(/\b[A-Fa-f0-9]{32,}\b/g, "[REDACTED_HEX]")
     .replace(/\b(?:\d[ -]*?){13,19}\b/g, "[REDACTED_NUMBER]");
   return masked.slice(0, 240);
+}
+
+async function dispatchAlert(
+  payload: TelegramAlertInput,
+  collector?: TelegramAlertCollector,
+): Promise<void> {
+  if (collector) {
+    collector.add(payload);
+    return;
+  }
+  await sendTelegramAlert(payload);
 }
 
 async function callAIWithTimeout(
@@ -225,11 +240,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         attempts: AI_RETRY_ATTEMPTS,
       },
     };
-    if (alertCollector) {
-      alertCollector.add(alertPayload);
-    } else {
-      await sendTelegramAlert(alertPayload);
-    }
+    await dispatchAlert(alertPayload, alertCollector);
     const baseError =
       lastError || new Error("AI API request failed after all retries");
     throw markAlertSent(baseError);
@@ -252,11 +263,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         errorText: errorText.slice(0, 500),
       },
     };
-    if (alertCollector) {
-      alertCollector.add(alertPayload);
-    } else {
-      await sendTelegramAlert(alertPayload);
-    }
+    await dispatchAlert(alertPayload, alertCollector);
     throw markAlertSent(
       new Error(
         `AI API error: ${response?.status || "unknown"} - ${errorText}`,
@@ -282,11 +289,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         model: GITHUB_MODEL,
       },
     };
-    if (alertCollector) {
-      alertCollector.add(alertPayload);
-    } else {
-      await sendTelegramAlert(alertPayload);
-    }
+    await dispatchAlert(alertPayload, alertCollector);
     throw markAlertSent(
       new Error("CORRUPT_INTELLIGENCE: Empty AI response content."),
     );
@@ -338,11 +341,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         contentPreview: sanitizeContentPreview(content),
       },
     };
-    if (alertCollector) {
-      alertCollector.add(alertPayload);
-    } else {
-      await sendTelegramAlert(alertPayload);
-    }
+    await dispatchAlert(alertPayload, alertCollector);
     throw markAlertSent(
       new Error(
         "CORRUPT_INTELLIGENCE: The AI response failed structural validation protocols.",
