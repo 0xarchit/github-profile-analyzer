@@ -321,7 +321,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
                 <span className="hidden sm:inline">Neural Roast</span>
                 <span className="sm:hidden">Roast</span>
               </h3>
-              <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black uppercase opacity-60 tracking-[0.15em] animate-pulse">
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase opacity-60 tracking-[0.15em] animate-pulse">
                 Live
               </span>
             </div>
@@ -380,7 +380,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
                     height={48}
                     className="w-12 h-12 object-contain group-hover:invert transition-all"
                   />
-                  <span className="text-[6px] font-black uppercase text-center leading-none group-hover:text-white">
+                  <span className="text-[8px] font-black uppercase text-center leading-none group-hover:text-white">
                     {slug.replace(/-/g, " ")}
                   </span>
                 </div>
@@ -391,7 +391,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
                   key={i}
                   className="neo-box p-4 bg-white flex flex-col items-center gap-2 group relative cursor-help border-2 border-black hover:bg-black hover:text-white transition-all hover:-translate-y-1"
                 >
-                  <span className="text-[8px] font-black uppercase text-center">
+                  <span className="text-[10px] font-black uppercase text-center">
                     {area}
                   </span>
                 </div>
