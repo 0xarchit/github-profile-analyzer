@@ -66,6 +66,18 @@ function minifyProfile(profile: ProfileSummary) {
   };
 }
 
+function sanitizeContentPreview(content: string): string {
+  const masked = content
+    .replace(
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+      "[REDACTED_EMAIL]",
+    )
+    .replace(/\b(?:ghp|github_pat)_[A-Za-z0-9_]+\b/g, "[REDACTED_TOKEN]")
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, "[REDACTED_HEX]")
+    .replace(/\b(?:\d[ -]*?){13,19}\b/g, "[REDACTED_NUMBER]");
+  return masked.slice(0, 240);
+}
+
 async function callAIWithTimeout(
   apiKey: string,
   systemPrompt: string,
@@ -323,7 +335,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       context: {
         username: profile.username,
         model: GITHUB_MODEL,
-        contentPreview: content.slice(0, 500),
+        contentPreview: sanitizeContentPreview(content),
       },
     };
     if (alertCollector) {

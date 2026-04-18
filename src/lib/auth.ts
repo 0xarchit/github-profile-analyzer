@@ -15,6 +15,18 @@ export interface Session {
   avatarUrl: string;
 }
 
+function isExpectedJwtFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const value = `${error.name} ${error.message}`.toLowerCase();
+  return (
+    value.includes("jwt") ||
+    value.includes("jws") ||
+    value.includes("token") ||
+    value.includes("expired") ||
+    value.includes("signature")
+  );
+}
+
 export async function createSession(sessionData: Session) {
   const token = await new SignJWT({ ...sessionData })
     .setProtectedHeader({ alg: "HS256" })
@@ -59,11 +71,13 @@ export async function getGuestSession(): Promise<string | null> {
     }
     return null;
   } catch (error) {
-    await sendTelegramAlert({
-      source: "AUTH_GET_GUEST_SESSION",
-      message: "Guest session verification failed",
-      error,
-    });
+    if (!isExpectedJwtFailure(error)) {
+      void sendTelegramAlert({
+        source: "AUTH_GET_GUEST_SESSION",
+        message: "Guest session verification failed",
+        error,
+      }).catch(() => null);
+    }
     return null;
   }
 }
@@ -73,11 +87,13 @@ export async function verifySession(token: string): Promise<Session | null> {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     return payload as unknown as Session;
   } catch (error) {
-    await sendTelegramAlert({
-      source: "AUTH_VERIFY_SESSION",
-      message: "Session verification failed",
-      error,
-    });
+    if (!isExpectedJwtFailure(error)) {
+      void sendTelegramAlert({
+        source: "AUTH_VERIFY_SESSION",
+        message: "Session verification failed",
+        error,
+      }).catch(() => null);
+    }
     return null;
   }
 }

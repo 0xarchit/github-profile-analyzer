@@ -200,12 +200,6 @@ export async function getProfileSummary(
   });
   if (!username || username.toLowerCase() === "undefined") {
     console.error("[GITHUB_API] Invalid username", { username });
-    await sendTelegramAlert({
-      source: "GITHUB_PROFILE_SUMMARY",
-      message: "Invalid username supplied",
-      error: new Error("INVALID_USERNAME"),
-      context: { username },
-    });
     throw new Error("INVALID_USERNAME");
   }
   const token = userToken || getFallbackToken();
@@ -288,12 +282,6 @@ export async function getProfileSummary(
     });
     if (body.errors[0]?.message.includes("Could not resolve to a User")) {
       console.error("[GITHUB_API] User not found in GitHub", { username });
-      await sendTelegramAlert({
-        source: "GITHUB_PROFILE_SUMMARY",
-        message: "User not found in GitHub",
-        error: new Error("USER_NOT_FOUND"),
-        context: { username },
-      });
       throw new Error("USER_NOT_FOUND");
     }
     await sendTelegramAlert({
@@ -307,12 +295,6 @@ export async function getProfileSummary(
   const user = body.data?.user;
   if (!user) {
     console.error("[GITHUB_API] No user data in response", { username });
-    await sendTelegramAlert({
-      source: "GITHUB_PROFILE_SUMMARY",
-      message: "No user data in response",
-      error: new Error("USER_NOT_FOUND"),
-      context: { username },
-    });
     throw new Error("USER_NOT_FOUND");
   }
   console.log("[GITHUB_API] User data parsed successfully", {

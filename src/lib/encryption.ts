@@ -64,11 +64,11 @@ export async function encrypt(text: string): Promise<string> {
 
     return `${uint8ArrayToHex(iv)}:${uint8ArrayToHex(authTag)}:${uint8ArrayToHex(ciphertext)}`;
   } catch (error) {
-    await sendTelegramAlert({
+    void sendTelegramAlert({
       source: "ENCRYPTION",
       message: "Encryption failed",
       error,
-    });
+    }).catch(() => null);
     throw error;
   }
 }
@@ -101,14 +101,12 @@ export async function decrypt(hash: string): Promise<string> {
     );
 
     return new TextDecoder().decode(decryptedBuffer);
-  } catch {
-    await sendTelegramAlert({
+  } catch (error) {
+    void sendTelegramAlert({
       source: "DECRYPTION",
       message: "Decryption failed",
-      error: new Error(
-        "DECRYPTION_FAILURE: Authentication failed or corrupt payload.",
-      ),
-    });
+      error,
+    }).catch(() => null);
     throw new Error(
       "DECRYPTION_FAILURE: Authentication failed or corrupt payload.",
     );

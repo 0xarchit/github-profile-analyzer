@@ -26,12 +26,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ hasStarred, repoStars });
   } catch (error) {
     console.error("Star status lookup failed:", error);
-    await sendTelegramAlert({
+    void sendTelegramAlert({
       source: "STAR_STATUS_ROUTE",
       message: "Star status lookup failed",
       error,
       context: { username: session.username },
-    });
+    }).catch(() => null);
     return NextResponse.json({ hasStarred: false, repoStars });
   }
 }

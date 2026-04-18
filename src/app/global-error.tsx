@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/actions/report-client-error";
 
 export default function GlobalError({
   error,
@@ -11,17 +12,13 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("Root layout error:", error);
-    void fetch("/api/alerts/error", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "GLOBAL_ERROR_BOUNDARY",
-        message: error.message,
-        digest: error.digest,
-        stack: error.stack,
-        url: typeof window !== "undefined" ? window.location.href : "",
-        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      }),
+    void reportClientError({
+      source: "GLOBAL_ERROR_BOUNDARY",
+      message: error.message,
+      digest: error.digest,
+      stack: error.stack,
+      url: typeof window !== "undefined" ? window.location.href : "",
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
     }).catch(() => null);
   }, [error]);
 

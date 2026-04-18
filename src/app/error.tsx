@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { AlertCircle, RotateCcw, Home } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { reportClientError } from "@/lib/actions/report-client-error";
 
 export default function Error({
   error,
@@ -16,17 +17,13 @@ export default function Error({
 
   useEffect(() => {
     console.error("Diagnostic Matrix Exception:", error);
-    void fetch("/api/alerts/error", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "CLIENT_ERROR_BOUNDARY",
-        message: error.message,
-        digest: error.digest,
-        stack: error.stack,
-        url: typeof window !== "undefined" ? window.location.href : "",
-        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      }),
+    void reportClientError({
+      source: "CLIENT_ERROR_BOUNDARY",
+      message: error.message,
+      digest: error.digest,
+      stack: error.stack,
+      url: typeof window !== "undefined" ? window.location.href : "",
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
     }).catch(() => null);
   }, [error]);
 

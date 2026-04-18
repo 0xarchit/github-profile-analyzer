@@ -79,6 +79,7 @@ export class TelegramAlertCollector {
     const entries = this.items
       .map((item, idx) => {
         const errorText = toErrorString(item.error);
+        const stackText = toStack(item.error);
         const contextText = toContextString(item.context);
         return [
           `#${idx + 1}`,
@@ -86,6 +87,7 @@ export class TelegramAlertCollector {
           `message: ${item.message}`,
           `error: ${errorText}`,
           `context: ${contextText}`,
+          `stack: ${stackText}`,
         ].join("\n");
       })
       .join("\n\n");
@@ -100,12 +102,22 @@ export class TelegramAlertCollector {
       .join("\n")
       .slice(0, 3900);
 
-    this.items = [];
-    await sendRawTelegramText(text);
+    try {
+      await sendRawTelegramText(text, { throwOnFailure: true });
+      this.items = [];
+    } catch (error) {
+      console.error("[TELEGRAM_ALERT] Batch send failed", {
+        count: this.items.length,
+        error,
+      });
+    }
   }
 }
 
-async function sendRawTelegramText(text: string): Promise<void> {
+async function sendRawTelegramText(
+  text: string,
+  options?: { throwOnFailure?: boolean },
+): Promise<void> {
   const token = process.env.TG_BOT_TOKEN;
   const channelId = process.env.TG_CHANNEL_ID;
 
@@ -135,9 +147,15 @@ async function sendRawTelegramText(text: string): Promise<void> {
         status: response.status,
         body,
       });
+      if (options?.throwOnFailure) {
+        throw new Error(`TELEGRAM_HTTP_${response.status}`);
+      }
     }
   } catch (error) {
     console.error("[TELEGRAM_ALERT] Network failure", error);
+    if (options?.throwOnFailure) {
+      throw error;
+    }
   }
 }
 

@@ -51,6 +51,11 @@ export async function GET(request: NextRequest) {
         ? err
         : new Error("An unknown analysis failure occurred");
     const msg = error.message;
+    const alreadyAlerted = Boolean(
+      (error as { __alertSent?: boolean }).__alertSent,
+    );
+    const isExpectedClientError =
+      msg === "USER_NOT_FOUND" || msg === "INVALID_USERNAME";
     const isAbortError =
       error.name === "AbortError" ||
       msg.includes("AbortError") ||
@@ -65,27 +70,31 @@ export async function GET(request: NextRequest) {
       type: error.constructor.name,
     });
 
-    alertCollector.add({
-      source: "ANALYZE_ROUTE",
-      message: "Scan matrix failure",
-      error,
-      context: {
-        username,
-        force,
-        nosave,
-        isAbortError,
-      },
-    });
+    if (!isExpectedClientError) {
+      if (!alreadyAlerted) {
+        alertCollector.add({
+          source: "ANALYZE_ROUTE",
+          message: "Scan matrix failure",
+          error,
+          context: {
+            username,
+            force,
+            nosave,
+            isAbortError,
+          },
+        });
+      }
 
-    try {
-      await alertCollector.flush({
-        username,
-        force,
-        nosave,
-        isAbortError,
-      });
-    } catch (flushError) {
-      console.error("[ANALYZE] Alert flush failed", flushError);
+      try {
+        await alertCollector.flush({
+          username,
+          force,
+          nosave,
+          isAbortError,
+        });
+      } catch (flushError) {
+        console.error("[ANALYZE] Alert flush failed", flushError);
+      }
     }
 
     if (msg === "USER_NOT_FOUND" || msg === "INVALID_USERNAME") {
