@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Outfit } from "next/font/google";
+import { Bricolage_Grotesque, Outfit, Syne } from "next/font/google";
 import "./globals.css";
 
 const bricolage = Bricolage_Grotesque({
@@ -11,6 +11,12 @@ const bricolage = Bricolage_Grotesque({
 const outfit = Outfit({
   variable: "--font-outfit",
   subsets: ["latin"],
+});
+
+const syne = Syne({
+  variable: "--font-syne",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 import { PdfxThemeProvider } from "@/lib/pdfx-theme-context";
@@ -49,7 +55,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body
-        className={`${bricolage.variable} ${outfit.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
+        className={`${bricolage.variable} ${outfit.variable} ${syne.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
       >
         <PdfxThemeProvider>{children}</PdfxThemeProvider>
       </body>

@@ -3,6 +3,7 @@
 @theme {
   --font-heading: var(--font-bricolage), system-ui;
   --font-body: var(--font-outfit), system-ui;
+  --font-display: var(--font-syne), system-ui;
   --radius: var(--radius);
   --color-background: var(--background);
   --color-foreground: var(--foreground);

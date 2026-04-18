@@ -58,7 +58,7 @@ export default function Home() {
 
       <Header floating />
 
-      <div className="max-w-4xl w-full space-y-16 z-10 text-center">
+      <div className="max-w-4xl w-full space-y-16 z-10 text-center mt-24 sm:mt-16 md:mt-0">
         <header className="space-y-10">
           <div
             className="inline-block relative cursor-default"
@@ -68,18 +68,20 @@ export default function Home() {
             <div
               className={`absolute inset-0 bg-neo-yellow border-4 border-black transition-transform duration-300 ${isHovered ? "translate-x-5 translate-y-5" : "translate-x-3 translate-y-3"}`}
             />
-            <div className="relative bg-white border-4 border-black p-8 px-12 md:px-20 transition-transform duration-300 hover:-translate-x-1 hover:-translate-y-1 group-hover:bg-neo-bg">
-              <h1 className="text-5xl md:text-8xl font-heading uppercase tracking-tighter leading-none mb-2 text-black">
+            <div className="relative bg-white border-4 border-black p-4 sm:p-8 sm:px-12 md:px-20 transition-transform duration-300 hover:-translate-x-1 hover:-translate-y-1 group-hover:bg-neo-bg">
+              <h1 className="text-3xl sm:text-5xl md:text-8xl font-display font-bold uppercase tracking-tighter leading-none mb-2 text-black">
                 GITHUB PROFILE
               </h1>
-              <h2 className="text-4xl md:text-7xl font-heading uppercase tracking-tighter leading-none text-neo-pink flex items-center justify-center gap-4">
+              <h2 className="text-2xl sm:text-4xl md:text-7xl font-display font-bold uppercase tracking-tighter leading-none text-neo-pink flex items-center justify-center gap-2 sm:gap-4">
                 ANALYZER
-                <Zap className="w-10 h-10 fill-neo-yellow text-black animate-bounce" />
+                <Zap className="w-6 h-6 sm:w-10 sm:h-10 fill-neo-yellow text-black animate-bounce" />
               </h2>
             </div>
             <div
-              className={`absolute -bottom-6 -right-6 transition-all duration-300 ${
-                isVersionExpanded || isVersionClickExpanded ? "w-80" : "w-auto"
+              className={`absolute -bottom-4 sm:-bottom-6 -right-3 sm:-right-6 transition-all duration-300 ${
+                isVersionExpanded || isVersionClickExpanded
+                  ? "w-72 sm:w-80"
+                  : "w-auto"
               }`}
             >
               <button
@@ -101,19 +103,19 @@ export default function Home() {
                     setIsVersionExpanded(false);
                   }
                 }}
-                className="bg-black text-white px-4 py-2 text-xs font-heading border-4 border-black rotate-3 shadow-neo hover:shadow-neo-lg transition-all w-full"
+                className="bg-black text-white px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-heading border-4 border-black rotate-3 shadow-neo hover:shadow-neo-lg transition-all w-full whitespace-nowrap"
               >
                 BETA VERSION
               </button>
               {(isVersionExpanded || isVersionClickExpanded) && (
                 <div
-                  className="absolute top-16 -right-2 bg-white border-4 border-black p-6 w-72 shadow-neo-lg space-y-3 z-50 animate-in fade-in duration-200"
+                  className="absolute top-14 sm:top-16 -right-1 sm:-right-2 bg-white border-4 border-black p-4 sm:p-6 w-64 sm:w-72 shadow-neo-lg space-y-3 z-50 animate-in fade-in duration-200"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <p className="text-xs font-heading uppercase font-bold text-neo-pink">
+                  <p className="text-[10px] sm:text-xs font-heading uppercase font-bold text-neo-pink">
                     New Experimental Interface
                   </p>
-                  <p className="text-xs font-body leading-relaxed">
+                  <p className="text-[9px] sm:text-xs font-body leading-relaxed">
                     This is a beta release. If you encounter bugs, security
                     issues, or have suggestions for improvements, please
                     contribute via GitHub.
@@ -123,7 +125,7 @@ export default function Home() {
                       href="https://github.com/0xarchit/github-profile-analyzer/issues"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] font-black uppercase bg-neo-yellow border-2 border-black px-3 py-2 hover:bg-black hover:text-white transition-colors"
+                      className="text-[9px] sm:text-[10px] font-black uppercase bg-neo-yellow border-2 border-black px-3 py-2 hover:bg-black hover:text-white transition-colors"
                     >
                       Report Bug
                     </a>
@@ -131,7 +133,7 @@ export default function Home() {
                       href="https://github.com/0xarchit/github-profile-analyzer/security/advisories"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] font-black uppercase bg-neo-pink text-white border-2 border-black px-3 py-2 hover:bg-black transition-colors"
+                      className="text-[9px] sm:text-[10px] font-black uppercase bg-neo-pink text-white border-2 border-black px-3 py-2 hover:bg-black transition-colors"
                     >
                       Security Issue
                     </a>
@@ -139,7 +141,7 @@ export default function Home() {
                       href="https://github.com/0xarchit/github-profile-analyzer"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] font-black uppercase bg-neo-green border-2 border-black px-3 py-2 hover:bg-black hover:text-white transition-colors"
+                      className="text-[9px] sm:text-[10px] font-black uppercase bg-neo-green border-2 border-black px-3 py-2 hover:bg-black hover:text-white transition-colors"
                     >
                       Contribute
                     </a>
@@ -158,7 +160,7 @@ export default function Home() {
             )}
           </div>
 
-          <p className="text-xl font-body font-bold text-black/60 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-sm sm:text-lg md:text-xl font-body font-bold text-black/60 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
             The high-fidelity protocol for technical identity analysis. Roast
             your code, quantify your impact, and upgrade your career trajectory.
           </p>
@@ -166,32 +168,34 @@ export default function Home() {
 
         <form
           onSubmit={handleAnalyze}
-          className="max-w-2xl mx-auto w-full space-y-8 text-black"
+          className="max-w-2xl mx-auto w-full space-y-6 text-black px-2 sm:px-0"
         >
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative group">
-              <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 pointer-events-none">
-                <span className="text-2xl font-black text-neo-pink">$</span>
-                <div className="w-1 h-8 bg-neo-pink animate-terminal-blink" />
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+            <div className="flex-1 relative group min-w-0">
+              <div className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2 z-10 pointer-events-none">
+                <span className="text-lg sm:text-2xl font-black text-neo-pink">
+                  $
+                </span>
+                <div className="w-0.5 sm:w-1 h-5 sm:h-8 bg-neo-pink animate-terminal-blink" />
               </div>
               <input
                 type="text"
                 placeholder="USER_IDENTIFIER"
-                className="neo-input w-full text-2xl pl-16 h-24 shadow-neo-lg group-hover:shadow-neo transition-all bg-white font-black border-4"
+                className="neo-input w-full text-sm sm:text-2xl pl-10 sm:pl-16 h-12 sm:h-24 shadow-neo-lg group-hover:shadow-neo transition-all bg-white font-black border-4 truncate"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
               />
-              <div className="absolute right-6 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase opacity-60 bg-black text-white px-2 py-1 border-2 border-black">
+              <div className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 text-[8px] sm:text-[10px] font-black uppercase opacity-60 bg-black text-white px-1.5 sm:px-2 py-0.5 sm:py-1 border-2 border-black whitespace-nowrap">
                 Target_Node
               </div>
             </div>
             <button
               type="submit"
-              className="neo-button bg-neo-pink text-2xl h-24 px-12 shadow-neo-lg hover:bg-black hover:text-white group flex items-center justify-center gap-3"
+              className="neo-button bg-neo-pink text-sm sm:text-2xl h-12 sm:h-24 px-4 sm:px-12 shadow-neo-lg hover:bg-black hover:text-white group flex items-center justify-center gap-2 sm:gap-3 whitespace-nowrap shrink-0"
             >
-              Scan Matrix
-              <Zap className="w-6 h-6 fill-neo-yellow" />
+              <span>Scan</span>
+              <Zap className="w-4 h-4 sm:w-6 sm:h-6 fill-neo-yellow" />
             </button>
           </div>
 
@@ -202,13 +206,13 @@ export default function Home() {
           )}
 
           {user && (
-            <div className="flex justify-center space-x-8">
+            <div className="flex justify-center items-center gap-6 flex-wrap">
               <button
                 type="button"
                 onClick={() => router.push(`/${user.username}`)}
-                className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink tracking-widest group"
+                className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink hover:border-neo-pink transition-colors tracking-widest group border-b-2 border-black pb-1"
               >
-                <div className="p-1 border-2 border-black group-hover:bg-neo-pink">
+                <div className="p-1 border-2 border-black group-hover:bg-neo-pink group-hover:border-neo-pink transition-colors">
                   <User className="w-4 h-4" />
                 </div>
                 Analyze Internal Profile
