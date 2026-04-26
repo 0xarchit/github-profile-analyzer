@@ -1,7 +1,8 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "./ProfileClient";
-import { getUserByUsername, getLatestSelfScan } from "@/lib/db";
+import { getUserByUsername, getLatestSelfScan, getScanById } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
 
 export const runtime = "edge";
@@ -16,19 +17,30 @@ export async function generateMetadata({
   let devType = "Developer";
 
   if (!username.includes(".")) {
-    try {
-      const user = await getUserByUsername(username);
-      if (user) {
-        const scan = await getLatestSelfScan(user.id, username);
-        if (scan) {
-          score = scan.data.score;
-          devType = scan.data.developer_type || "Developer";
-        }
+    const user = await getUserByUsername(username);
+    if (user) {
+      const session = await getSession();
+      const isOwner =
+        session?.username?.toLowerCase() === username.toLowerCase();
+
+      let scan = null;
+      if (user.settings?.primary_scan_id) {
+        scan = await getScanById(user.settings.primary_scan_id);
       }
-    } catch {
-      score = 0;
-      devType = "Developer";
+      if (!scan && (isOwner || user.settings?.public_scans)) {
+        scan = await getLatestSelfScan(user.id, username);
+      }
+      // If still no scan and not owner and public_scans off -> private
+      if (!scan && !isOwner && !user.settings?.public_scans) {
+        notFound();
+      }
+
+      if (scan) {
+        score = scan.data.score;
+        devType = scan.data.developer_type || "Developer";
+      }
     }
+    // If no user (unregistered), we still allow metadata (score remains 0)
   }
 
   const title = `${username}'s Engineering Protocol | ${score}/100 GitScore`;
@@ -61,25 +73,36 @@ export default async function Page({
     notFound();
   }
 
-  let initialScan: Awaited<ReturnType<typeof getLatestSelfScan>> = null;
-  try {
-    const user = await getUserByUsername(username);
-    initialScan = user ? await getLatestSelfScan(user.id, username) : null;
-  } catch {
-    initialScan = null;
+  const user = await getUserByUsername(username);
+  let isOwner = false;
+  if (user) {
+    const session = await getSession();
+    isOwner = session?.username?.toLowerCase() === username.toLowerCase();
   }
 
-  return (
-    <ProfileClient
-      username={username}
-      initialData={
-        initialScan
-          ? ({
-              ...initialScan.data,
-              username,
-            } as AnalysisResult)
-          : undefined
-      }
-    />
-  );
+  let scan = null;
+  if (user) {
+    if (user.settings?.primary_scan_id) {
+      scan = await getScanById(user.settings.primary_scan_id);
+    }
+    if (!scan && (isOwner || user.settings?.public_scans)) {
+      scan = await getLatestSelfScan(user.id, username);
+    }
+    // If still no scan and not owner and public_scans off -> private profile
+    if (!scan && !isOwner && !user.settings?.public_scans) {
+      notFound();
+    }
+  }
+
+  const initialData: AnalysisResult | undefined = scan
+    ? ({
+        ...scan.data,
+        username,
+        snapshotId: scan.id,
+        isHistorical: true,
+        isLocked: user?.settings?.profile_locked ?? false,
+      } as AnalysisResult)
+    : undefined;
+
+  return <ProfileClient username={username} initialData={initialData} />;
 }

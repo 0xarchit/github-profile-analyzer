@@ -202,20 +202,33 @@ export async function GET(request: NextRequest) {
     }
     console.log("[ANALYZE] Star status resolved", { hasTargetStarred });
 
-    if (!hasTargetStarred) {
-      console.log("[ANALYZE] Star required - denying access");
-      return NextResponse.json(
-        {
-          error: "Star required",
-          showPopup: true,
-          isStarred: false,
-          message: "Support the analyzer to unlock high-fidelity shards.",
-        },
-        { status: 403 },
-      );
-    }
+	if (!hasTargetStarred) {
+		console.log("[ANALYZE] Star required - denying access");
+		return NextResponse.json(
+			{
+				error: "Star required",
+				showPopup: true,
+				isStarred: false,
+				message: "Support the analyzer to unlock high-fidelity shards.",
+			},
+			{ status: 403 },
+		);
+	}
 
-if (!force && targetUser) {
+	// Enforce visibility settings for registered users only
+	if (targetUser) {
+		const hasPrincipal = Boolean(targetUser.settings?.primary_scan_id);
+		const publicScans = targetUser.settings?.public_scans ?? false;
+		if (!isOwnerOfTarget && !publicScans && !hasPrincipal) {
+			console.log("[ANALYZE] Access denied - profile private, no principal");
+			return NextResponse.json(
+				{ error: "ACCESS_DENIED", message: "This profile is private." },
+				{ status: 403 },
+			);
+		}
+	}
+
+	if (!force && targetUser) {
 		if (targetUser.settings?.primary_scan_id) {
 			const isLocked = targetUser.settings?.profile_locked ?? false;
 			console.log("[ANALYZE] Attempting to load principal scan", {
@@ -236,22 +249,34 @@ if (!force && targetUser) {
 			}
 		}
 
-		if (isOwnerOfTarget || targetUser.settings?.public_scans) {
-			console.log("[ANALYZE] Attempting to load latest self scan", {
-				userId: targetUser.id,
-				username,
+	if (isOwnerOfTarget || targetUser.settings?.public_scans) {
+		console.log("[ANALYZE] Attempting to load latest self scan", {
+			userId: targetUser.id,
+			username,
+		});
+		const latestScan = await getLatestSelfScan(targetUser.id, username);
+		if (latestScan) {
+			console.log("[ANALYZE] Returning latest self scan");
+			return NextResponse.json({
+				...latestScan.data,
+				isLocked: false,
+				snapshotId: latestScan.id,
+				isHistorical: true,
 			});
-			const latestScan = await getLatestSelfScan(targetUser.id, username);
-			if (latestScan) {
-				console.log("[ANALYZE] Returning latest self scan");
-				return NextResponse.json({
-					...latestScan.data,
-					isLocked: false,
-					snapshotId: latestScan.id,
-					isHistorical: true,
-				});
-			}
 		}
+	}
+
+	// If no principal scan and viewer is not owner and public_scans is disabled, deny access
+	if (!isOwnerOfTarget && !targetUser.settings?.public_scans) {
+		console.log("[ANALYZE] Access denied - profile is private");
+		return NextResponse.json(
+			{
+				error: "ACCESS_DENIED",
+				message: "This profile is private.",
+			},
+			{ status: 403 },
+		);
+	}
 	}
 
     const cacheKey = `analysed:${username.toLowerCase()}`;

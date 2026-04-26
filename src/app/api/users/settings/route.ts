@@ -66,7 +66,10 @@ const user = await getUserByGithubId(session.githubId);
 
 	await updateUserSettings(user.id, parsed.data);
 
-	if (parsed.data.primary_scan_id !== undefined) {
+	if (
+		parsed.data.primary_scan_id !== undefined ||
+		parsed.data.public_scans !== undefined
+	) {
 		const cacheKey = `analysed:${user.username.toLowerCase()}`;
 		await deleteCachedData(cacheKey);
 	}

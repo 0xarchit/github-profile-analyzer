@@ -44,18 +44,18 @@ export interface CommitActivity {
 }
 
 export interface CareerStats {
-  total_contributions: number;
-  total_commits: number;
-  total_prs: number;
-  total_issues: number;
-  total_reviews: number;
-  daily_streak: number;
-  daily_best: number;
-  weekly_streak: number;
-  weekly_best: number;
-  top_languages: LanguageDistribution[];
-  commit_activity: CommitActivity[];
-  trophies: Trophy[];
+	total_contributions?: number;
+	total_commits: number;
+	total_prs: number;
+	total_issues: number;
+	total_reviews?: number;
+	daily_streak: number;
+	daily_best: number;
+	weekly_streak: number;
+	weekly_best: number;
+	top_languages: LanguageDistribution[];
+	commit_activity: CommitActivity[];
+	trophies?: Trophy[];
 }
 
 export interface ContributionDay {
