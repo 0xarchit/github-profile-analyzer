@@ -215,61 +215,44 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!force && targetUser) {
-      if (isOwnerOfTarget && targetUser.settings?.primary_scan_id) {
-        console.log("[ANALYZE] Attempting to load owner principal scan", {
-          scanId: targetUser.settings.primary_scan_id,
-        });
-        const principalScan = await getScanById(
-          targetUser.settings.primary_scan_id,
-        );
-        if (principalScan) {
-          console.log("[ANALYZE] Returning owner principal scan");
-          return NextResponse.json({
-            ...principalScan.data,
-            isLocked: false,
-            snapshotId: principalScan.id,
-            isHistorical: true,
-          });
-        }
-}
-
-	if (targetUser.settings?.primary_scan_id) {
-		const isLocked = targetUser.settings?.profile_locked ?? false;
-		console.log("[ANALYZE] Attempting to load principal scan", {
-			scanId: targetUser.settings.primary_scan_id,
-			isLocked,
-		});
-		const principalScan = await getScanById(
-			targetUser.settings.primary_scan_id,
-		);
-		if (principalScan) {
-			console.log("[ANALYZE] Returning principal scan");
-			return NextResponse.json({
-				...principalScan.data,
+if (!force && targetUser) {
+		if (targetUser.settings?.primary_scan_id) {
+			const isLocked = targetUser.settings?.profile_locked ?? false;
+			console.log("[ANALYZE] Attempting to load principal scan", {
+				scanId: targetUser.settings.primary_scan_id,
 				isLocked,
-				snapshotId: principalScan.id,
 			});
+			const principalScan = await getScanById(
+				targetUser.settings.primary_scan_id,
+			);
+			if (principalScan) {
+				console.log("[ANALYZE] Returning principal scan");
+				return NextResponse.json({
+					...principalScan.data,
+					isLocked,
+					snapshotId: principalScan.id,
+					isHistorical: true,
+				});
+			}
+		}
+
+		if (isOwnerOfTarget || targetUser.settings?.public_scans) {
+			console.log("[ANALYZE] Attempting to load latest self scan", {
+				userId: targetUser.id,
+				username,
+			});
+			const latestScan = await getLatestSelfScan(targetUser.id, username);
+			if (latestScan) {
+				console.log("[ANALYZE] Returning latest self scan");
+				return NextResponse.json({
+					...latestScan.data,
+					isLocked: false,
+					snapshotId: latestScan.id,
+					isHistorical: true,
+				});
+			}
 		}
 	}
-
-	if (isOwnerOfTarget || targetUser.settings?.public_scans) {
-        console.log("[ANALYZE] Attempting to load latest self scan", {
-          userId: targetUser.id,
-          username,
-        });
-        const latestScan = await getLatestSelfScan(targetUser.id, username);
-        if (latestScan) {
-          console.log("[ANALYZE] Returning latest self scan");
-          return NextResponse.json({
-            ...latestScan.data,
-            isLocked: false,
-            snapshotId: latestScan.id,
-            isHistorical: true,
-          });
-        }
-      }
-    }
 
     const cacheKey = `analysed:${username.toLowerCase()}`;
 
