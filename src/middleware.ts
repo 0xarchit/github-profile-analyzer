@@ -21,13 +21,13 @@ const redis = isRatelimitConfigured
   : null;
 
 const ratelimit = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(5, "15 m"),
-      analytics: true,
-      prefix: "gitscore:ratelimit",
-    })
-  : null;
+	? new Ratelimit({
+		redis,
+		limiter: Ratelimit.slidingWindow(5, "15 m"),
+		analytics: false,
+		prefix: "gitscore:ratelimit",
+	})
+	: null;
 
 function applySecurityHeaders(
   response: Response | NextResponse,
