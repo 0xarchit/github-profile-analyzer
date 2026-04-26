@@ -232,29 +232,28 @@ export async function GET(request: NextRequest) {
             isHistorical: true,
           });
         }
-      }
+}
 
-      if (
-        targetUser.settings?.profile_locked &&
-        targetUser.settings.primary_scan_id
-      ) {
-        console.log("[ANALYZE] Attempting to load locked scan", {
-          scanId: targetUser.settings.primary_scan_id,
-        });
-        const lockedScan = await getScanById(
-          targetUser.settings.primary_scan_id,
-        );
-        if (lockedScan) {
-          console.log("[ANALYZE] Returning locked scan");
-          return NextResponse.json({
-            ...lockedScan.data,
-            isLocked: true,
-            snapshotId: lockedScan.id,
-          });
-        }
-      }
+	if (targetUser.settings?.primary_scan_id) {
+		const isLocked = targetUser.settings?.profile_locked ?? false;
+		console.log("[ANALYZE] Attempting to load principal scan", {
+			scanId: targetUser.settings.primary_scan_id,
+			isLocked,
+		});
+		const principalScan = await getScanById(
+			targetUser.settings.primary_scan_id,
+		);
+		if (principalScan) {
+			console.log("[ANALYZE] Returning principal scan");
+			return NextResponse.json({
+				...principalScan.data,
+				isLocked,
+				snapshotId: principalScan.id,
+			});
+		}
+	}
 
-      if (isOwnerOfTarget || targetUser.settings?.public_scans) {
+	if (isOwnerOfTarget || targetUser.settings?.public_scans) {
         console.log("[ANALYZE] Attempting to load latest self scan", {
           userId: targetUser.id,
           username,

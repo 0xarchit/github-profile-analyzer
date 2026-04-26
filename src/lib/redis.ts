@@ -65,43 +65,66 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
 }
 
 export async function setCachedData(
-  key: string,
-  data: unknown,
-  ttl = CACHE_TTL,
+	key: string,
+	data: unknown,
+	ttl = CACHE_TTL,
 ): Promise<void> {
-  const normalizedKey = normalizeKey(key);
-  if (!isRedisConfigured || !redis) {
-    console.log("[CACHE] Redis not configured - skipping set", {
-      key,
-      normalizedKey,
-      ttl,
-    });
-    return;
-  }
-  if (!Number.isFinite(ttl) || ttl <= 0) {
-    console.log("[CACHE] Invalid TTL - skipping set", { key, ttl });
-    return;
-  }
-  try {
-    console.log("[CACHE] Writing to cache", {
-      key: normalizedKey,
-      ttl,
-      dataSize: JSON.stringify(data).length,
-    });
-    await redis.set(normalizeKey(key), data, { ex: Math.floor(ttl) });
-    console.log("[CACHE] Cache write successful", { key: normalizedKey, ttl });
-  } catch (err) {
-    console.error("[CACHE] Redis write failure", {
-      key,
-      ttl,
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-    void sendTelegramAlert({
-      source: "REDIS_WRITE",
-      message: "Redis write failure",
-      error: err,
-      context: { key, normalizedKey, ttl },
-    }).catch(() => null);
-  }
+	const normalizedKey = normalizeKey(key);
+	if (!isRedisConfigured || !redis) {
+		console.log("[CACHE] Redis not configured - skipping set", {
+			key,
+			normalizedKey,
+			ttl,
+		});
+		return;
+	}
+	if (!Number.isFinite(ttl) || ttl <= 0) {
+		console.log("[CACHE] Invalid TTL - skipping set", { key, ttl });
+		return;
+	}
+	try {
+		console.log("[CACHE] Writing to cache", {
+			key: normalizedKey,
+			ttl,
+			dataSize: JSON.stringify(data).length,
+		});
+		await redis.set(normalizeKey(key), data, { ex: Math.floor(ttl) });
+		console.log("[CACHE] Cache write successful", { key: normalizedKey, ttl });
+	} catch (err) {
+		console.error("[CACHE] Redis write failure", {
+			key,
+			ttl,
+			error: err instanceof Error ? err.message : String(err),
+			stack: err instanceof Error ? err.stack : undefined,
+		});
+		void sendTelegramAlert({
+			source: "REDIS_WRITE",
+			message: "Redis write failure",
+			error: err,
+			context: { key, normalizedKey, ttl },
+		}).catch(() => null);
+	}
+}
+
+export async function deleteCachedData(key: string): Promise<void> {
+	const normalizedKey = normalizeKey(key);
+	if (!isRedisConfigured || !redis) {
+		console.log("[CACHE] Redis not configured - skipping delete", {
+			key,
+			normalizedKey,
+		});
+		return;
+	}
+	try {
+		console.log("[CACHE] Deleting cache key", { key: normalizedKey });
+		await redis.del(normalizedKey);
+		await redis.del(key);
+		console.log("[CACHE] Cache key deleted", { key: normalizedKey });
+	} catch (err) {
+		console.error("[CACHE] Redis delete failure", {
+			key,
+			normalizedKey,
+			error: err instanceof Error ? err.message : String(err),
+		});
+	}
 }

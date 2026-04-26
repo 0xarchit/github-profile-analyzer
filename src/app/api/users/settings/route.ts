@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { getUserByGithubId, updateUserSettings, getUserScans } from "@/lib/db";
+import { deleteCachedData } from "@/lib/redis";
 
 export const runtime = "edge";
 
@@ -59,19 +60,24 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const user = await getUserByGithubId(session.githubId);
-    if (!user)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+const user = await getUserByGithubId(session.githubId);
+	if (!user)
+		return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    await updateUserSettings(user.id, parsed.data);
+	await updateUserSettings(user.id, parsed.data);
 
-    return NextResponse.json({
-      success: true,
-      settings: {
-        ...user.settings,
-        ...parsed.data,
-      },
-    });
+	if (parsed.data.primary_scan_id !== undefined) {
+		const cacheKey = `analysed:${user.username.toLowerCase()}`;
+		await deleteCachedData(cacheKey);
+	}
+
+	return NextResponse.json({
+		success: true,
+		settings: {
+			...user.settings,
+			...parsed.data,
+		},
+	});
   } catch (err: unknown) {
     const error =
       err instanceof Error ? err : new Error("Settings Update Failure");
