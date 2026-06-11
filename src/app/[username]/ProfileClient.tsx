@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PDFExportButton } from "@/components/PDFExportButton";
@@ -18,6 +19,10 @@ import {
 } from "lucide-react";
 import { AnalysisResult } from "@/types";
 import { fetchAuthIdentity } from "@/lib/client-auth";
+import {
+  fetchProfileAnalysis,
+  ProfileAnalysisError,
+} from "@/lib/profile-analysis";
 
 const StatsDashboard = dynamic(
   () =>
@@ -37,35 +42,66 @@ interface ProfileClientProps {
 
 export function ProfileClient({ username, initialData }: ProfileClientProps) {
   const router = useRouter();
-  const [data, setData] = useState<AnalysisResult | null>(initialData || null);
   const [error, setError] = useState<string | null>(null);
   const [showStarModal, setShowStarModal] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isVerifyingAgain, setIsVerifyingAgain] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const safeUsername = (username || "").toLowerCase();
+  const isInvalidUsername =
+    !username || safeUsername === "undefined" || safeUsername === "null";
 
-  const fetchData = useCallback(
-    async (force = false, nosave = false) => {
-      try {
-        setIsRefreshing(force);
-        const baseUrl = `/api/analyze?username=${username}`;
-        const res = await fetch(
-          `${baseUrl}${force ? "&force=true" : ""}${nosave ? "&nosave=true" : ""}`,
-        );
-        const result = await res.json();
+  const { data, error: fetchError, mutate } = useSWR(
+    isInvalidUsername ? null : ["profile-analysis", username],
+    ([, activeUsername]) => fetchProfileAnalysis(activeUsername),
+    {
+      fallbackData: initialData,
+      revalidateIfStale: false,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 5 * 60 * 1000,
+      keepPreviousData: true,
+    },
+  );
 
-        if (res.status === 403 && result.error === "Star required") {
-          setShowStarModal(true);
-          return;
-        }
-
-        if (!res.ok) {
-          setError(result.error || "Diagnostic matrix failed");
-          return;
-        }
-
-        setData(result);
+  useEffect(() => {
+    if (fetchError) {
+      if (
+        fetchError instanceof ProfileAnalysisError &&
+        fetchError.code === "STAR_REQUIRED"
+      ) {
+        setShowStarModal(true);
         setError(null);
+        return;
+      }
+
+      setShowStarModal(false);
+      setError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Diagnostic matrix failed",
+      );
+      return;
+    }
+
+    if (!isInvalidUsername) {
+      setError(null);
+    }
+  }, [fetchError, isInvalidUsername]);
+
+  useEffect(() => {
+    if (data) {
+      setShowStarModal(false);
+    }
+  }, [data]);
+
+  const refreshAnalysis = useCallback(
+    async (options: { force?: boolean; nosave?: boolean } = {}) => {
+      setIsRefreshing(true);
+
+      try {
+        const nextData = await fetchProfileAnalysis(username, options);
+        await mutate(nextData, { revalidate: false });
 
         const confetti = (await import("canvas-confetti")).default;
         confetti({
@@ -74,18 +110,30 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
           origin: { y: 0.6 },
           colors: ["#FFE600", "#FF00E5", "#00F0FF", "#000000"],
         });
-      } catch {
-        setError("NETWORK_FAILURE");
+      } catch (refreshError) {
+        if (
+          refreshError instanceof ProfileAnalysisError &&
+          refreshError.code === "STAR_REQUIRED"
+        ) {
+          setShowStarModal(true);
+          setError(null);
+        } else {
+          setShowStarModal(false);
+          setError(
+            refreshError instanceof Error
+              ? refreshError.message
+              : "NETWORK_FAILURE",
+          );
+        }
       } finally {
         setIsRefreshing(false);
       }
     },
-    [username],
+    [mutate, username],
   );
 
   useEffect(() => {
-    const safeUsername = (username || "").toLowerCase();
-    if (!username || safeUsername === "undefined" || safeUsername === "null") {
+    if (isInvalidUsername) {
       setError("INVALID_ID_SPEC");
       return;
     }
@@ -97,17 +145,13 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
       .catch(() => {
         setIsOwner(false);
       });
-
-    if (!initialData) {
-      void fetchData();
-    }
-  }, [username, initialData, fetchData]);
+  }, [isInvalidUsername, safeUsername]);
 
   const handleRecheckStar = async () => {
     setIsVerifyingAgain(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      await fetchData();
+      await refreshAnalysis();
     } finally {
       setIsVerifyingAgain(false);
     }
@@ -231,7 +275,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
         {(data.isLocked || data.isHistorical) && (
           <button
-            onClick={() => fetchData(true, true)}
+            onClick={() => refreshAnalysis({ force: true, nosave: true })}
             disabled={isRefreshing}
             className="neo-button bg-neo-yellow text-[10px] md:text-sm flex items-center justify-center gap-2 group shadow-neo-active hover:shadow-neo transition-all disabled:opacity-50"
           >
@@ -242,7 +286,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
         {(isOwner || (!data.isLocked && !data.isHistorical)) && (
           <button
-            onClick={() => fetchData(true, false)}
+            onClick={() => refreshAnalysis({ force: true })}
             disabled={isRefreshing}
             className="neo-button bg-neo-green text-[10px] md:text-sm flex items-center justify-center gap-2 group shadow-neo-active hover:shadow-neo transition-all disabled:opacity-50"
           >
