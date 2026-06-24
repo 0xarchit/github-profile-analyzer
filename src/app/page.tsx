@@ -11,8 +11,7 @@ export default function Home() {
   const [user, setUser] = useState<AuthIdentity | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
-  const [isVersionExpanded, setIsVersionExpanded] = useState(false);
-  const [isVersionClickExpanded, setIsVersionClickExpanded] = useState(false);
+  const [versionOpen, setVersionOpen] = useState<"hover" | "click" | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -79,35 +78,18 @@ export default function Home() {
             </div>
             <div
               className={`absolute -bottom-4 sm:-bottom-6 -right-3 sm:-right-6 transition-all duration-300 ${
-                isVersionExpanded || isVersionClickExpanded
-                  ? "w-72 sm:w-80"
-                  : "w-auto"
+                versionOpen ? "w-72 sm:w-80" : "w-auto"
               }`}
             >
               <button
-                onClick={() => {
-                  setIsVersionClickExpanded(!isVersionClickExpanded);
-                  if (!isVersionClickExpanded) {
-                    setIsVersionExpanded(true);
-                  } else {
-                    setIsVersionExpanded(false);
-                  }
-                }}
-                onMouseEnter={() => {
-                  if (!isVersionClickExpanded) {
-                    setIsVersionExpanded(true);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (!isVersionClickExpanded) {
-                    setIsVersionExpanded(false);
-                  }
-                }}
+                onClick={() => setVersionOpen(versionOpen === "click" ? null : "click")}
+                onMouseEnter={() => { if (versionOpen !== "click") setVersionOpen("hover"); }}
+                onMouseLeave={() => { if (versionOpen !== "click") setVersionOpen(null); }}
                 className="bg-black text-white px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-heading border-4 border-black rotate-3 shadow-neo hover:shadow-neo-lg transition-all w-full whitespace-nowrap"
               >
                 BETA VERSION
               </button>
-              {(isVersionExpanded || isVersionClickExpanded) && (
+              {versionOpen && (
                 <div
                   className="absolute top-14 sm:top-16 -right-1 sm:-right-2 bg-white border-4 border-black p-4 sm:p-6 w-64 sm:w-72 shadow-neo-lg space-y-3 z-50 animate-in fade-in duration-200"
                   onClick={(e) => e.stopPropagation()}
@@ -149,13 +131,10 @@ export default function Home() {
                 </div>
               )}
             </div>
-            {isVersionClickExpanded && (
+            {versionOpen === "click" && (
               <div
                 className="fixed inset-0 z-0 cursor-default"
-                onClick={() => {
-                  setIsVersionClickExpanded(false);
-                  setIsVersionExpanded(false);
-                }}
+                onClick={() => setVersionOpen(null)}
               />
             )}
           </div>

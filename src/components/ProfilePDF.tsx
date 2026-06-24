@@ -230,12 +230,9 @@ export const ProfilePDF = ({ data }: { data: AnalysisResult }) => {
           <View style={styles.roastBox}>
             <Text style={styles.sectionTitle}>Neural Roast Output</Text>
             <Text style={styles.roastText}>
-              &quot;
-              {data.segments?.roast ||
-                (data.detailed_analysis
-                  ? data.detailed_analysis.slice(0, 100)
-                  : "No analysis available")}
-              &quot;
+              "
+              {data.segments?.roast || "No analysis available"}
+              "
             </Text>
           </View>
         </View>

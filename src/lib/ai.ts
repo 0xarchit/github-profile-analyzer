@@ -3,7 +3,6 @@ import { ProfileSummary } from "@/types";
 import {
   sendTelegramAlert,
   TelegramAlertCollector,
-  TelegramAlertInput,
 } from "./telegram-alert";
 
 const GITHUB_PAT_TOKENS = (process.env.GITHUB_PAT_TOKENS || "")
@@ -70,28 +69,6 @@ function minifyProfile(profile: ProfileSummary) {
   };
 }
 
-function sanitizeContentPreview(content: string): string {
-  const masked = content
-    .replace(
-      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-      "[REDACTED_EMAIL]",
-    )
-    .replace(/\b(?:ghp|github_pat)_[A-Za-z0-9_]+\b/g, "[REDACTED_TOKEN]")
-    .replace(/\b[A-Fa-f0-9]{32,}\b/g, "[REDACTED_HEX]")
-    .replace(/\b(?:\d[ -]*?){13,19}\b/g, "[REDACTED_NUMBER]");
-  return masked.slice(0, 240);
-}
-
-async function dispatchAlert(
-  payload: TelegramAlertInput,
-  collector?: TelegramAlertCollector,
-): Promise<void> {
-  if (collector) {
-    collector.add(payload);
-    return;
-  }
-  void sendTelegramAlert(payload).catch(() => null);
-}
 
 async function callAIWithTimeout(
   apiKey: string,
@@ -240,7 +217,8 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         attempts: AI_RETRY_ATTEMPTS,
       },
     };
-    await dispatchAlert(alertPayload, alertCollector);
+    if (alertCollector) alertCollector.add(alertPayload);
+    else void sendTelegramAlert(alertPayload).catch(() => null);
     const baseError =
       lastError || new Error("AI API request failed after all retries");
     throw markAlertSent(baseError);
@@ -263,7 +241,8 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         errorText: errorText.slice(0, 500),
       },
     };
-    await dispatchAlert(alertPayload, alertCollector);
+    if (alertCollector) alertCollector.add(alertPayload);
+    else void sendTelegramAlert(alertPayload).catch(() => null);
     throw markAlertSent(
       new Error(
         `AI API error: ${response?.status || "unknown"} - ${errorText}`,
@@ -289,7 +268,8 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         model: GITHUB_MODEL,
       },
     };
-    await dispatchAlert(alertPayload, alertCollector);
+    if (alertCollector) alertCollector.add(alertPayload);
+    else void sendTelegramAlert(alertPayload).catch(() => null);
     throw markAlertSent(
       new Error("CORRUPT_INTELLIGENCE: Empty AI response content."),
     );
@@ -338,10 +318,11 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       context: {
         username: profile.username,
         model: GITHUB_MODEL,
-        contentPreview: sanitizeContentPreview(content),
+        contentPreview: content.slice(0, 240),
       },
     };
-    await dispatchAlert(alertPayload, alertCollector);
+    if (alertCollector) alertCollector.add(alertPayload);
+    else void sendTelegramAlert(alertPayload).catch(() => null);
     throw markAlertSent(
       new Error(
         "CORRUPT_INTELLIGENCE: The AI response failed structural validation protocols.",
