@@ -19,8 +19,6 @@ const syne = Syne({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-import { PdfxThemeProvider } from "@/lib/pdfx-theme-context";
-
 function getMetadataBase(): URL {
   const raw = process.env.NEXT_PUBLIC_APP_URL;
   if (!raw) return new URL("http://localhost:3000");
@@ -57,7 +55,7 @@ export default function RootLayout({
       <body
         className={`${bricolage.variable} ${outfit.variable} ${syne.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
       >
-        <PdfxThemeProvider>{children}</PdfxThemeProvider>
+        {children}
       </body>
     </html>
   );
