@@ -20,19 +20,11 @@ function normalizeDbUrl(rawUrl: string): string {
   }
 }
 
-const DATABASE_WRITE = normalizeDbUrl(
+const DATABASE_URL = normalizeDbUrl(
   process.env.DATABASE_WRITE || process.env.DATABASE_URL || "",
 );
-const DATABASE_READS = (
-  process.env.DATABASE_READ ||
-  process.env.DATABASE_READS ||
-  ""
-)
-  .split(",")
-  .map((item) => normalizeDbUrl(item))
-  .filter(Boolean);
 
-if (!DATABASE_WRITE) {
+if (!DATABASE_URL) {
   throw new Error(
     "Database URL is required. Set DATABASE_WRITE or DATABASE_URL.",
   );
@@ -45,19 +37,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   primary_scan_id: null,
 };
 
-export const sql = neon(DATABASE_WRITE);
-
-export function getReadSql() {
-  if (DATABASE_READS.length === 0) return sql;
-  const dbUrl =
-    DATABASE_READS[Math.floor(Math.random() * DATABASE_READS.length)];
-  if (!dbUrl) return sql;
-  try {
-    return neon(dbUrl);
-  } catch {
-    return sql;
-  }
-}
+export const sql = neon(DATABASE_URL);
 
 export interface UserSettings {
   profile_locked: boolean;
@@ -140,9 +120,8 @@ export async function getUserByGithubId(
 ): Promise<User | null> {
   console.log("[DB] getUserByGithubId", { githubId });
   try {
-    const readSql = getReadSql();
     const rows =
-      await readSql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
+      await sql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
     console.log("[DB] getUserByGithubId result", { found: rows.length > 0 });
     return materializeUser(rows[0]);
   } catch (err) {
@@ -156,8 +135,7 @@ export async function getUserByGithubId(
 export async function getUserById(id: number): Promise<User | null> {
   console.log("[DB] getUserById", { id });
   try {
-    const readSql = getReadSql();
-    const rows = await readSql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
+    const rows = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
     console.log("[DB] getUserById result", { found: rows.length > 0 });
     return materializeUser(rows[0]);
   } catch (err) {
@@ -173,9 +151,8 @@ export async function getUserByUsername(
 ): Promise<User | null> {
   console.log("[DB] getUserByUsername", { username });
   try {
-    const readSql = getReadSql();
     const rows =
-      await readSql`SELECT * FROM users WHERE LOWER(username) = LOWER(${username}) LIMIT 1`;
+      await sql`SELECT * FROM users WHERE LOWER(username) = LOWER(${username}) LIMIT 1`;
     console.log("[DB] getUserByUsername result", { found: rows.length > 0 });
     return materializeUser(rows[0]);
   } catch (err) {
@@ -186,6 +163,7 @@ export async function getUserByUsername(
     throw err;
   }
 }
+
 export async function upsertUser(user: {
   github_id: number;
   username: string;
@@ -294,8 +272,7 @@ export async function saveScan(
 export async function getScanById(id: string): Promise<Scan | null> {
   console.log("[DB] getScanById", { id });
   try {
-    const readSql = getReadSql();
-    const rows = await readSql`SELECT * FROM scans WHERE id = ${id} LIMIT 1`;
+    const rows = await sql`SELECT * FROM scans WHERE id = ${id} LIMIT 1`;
     console.log("[DB] getScanById result", { found: rows.length > 0 });
     return (rows[0] as Scan) || null;
   } catch (err) {
@@ -310,9 +287,8 @@ export async function getScanById(id: string): Promise<Scan | null> {
 export async function getUserScans(userId: number): Promise<Scan[]> {
   console.log("[DB] getUserScans", { userId });
   try {
-    const readSql = getReadSql();
     const rows =
-      await readSql`SELECT * FROM scans WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 10`;
+      await sql`SELECT * FROM scans WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 10`;
     console.log("[DB] getUserScans result", { count: rows.length });
     return rows as Scan[];
   } catch (err) {
@@ -330,8 +306,7 @@ export async function getLatestSelfScan(
 ): Promise<Scan | null> {
   console.log("[DB] getLatestSelfScan", { userId, username });
   try {
-    const readSql = getReadSql();
-    const rows = await readSql`
+    const rows = await sql`
       SELECT * FROM scans 
       WHERE user_id = ${userId} AND LOWER(username) = LOWER(${username}) 
       ORDER BY created_at DESC LIMIT 1

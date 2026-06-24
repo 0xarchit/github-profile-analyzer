@@ -26,17 +26,6 @@ function getRequesterKey(clientHeaders: Headers): string {
   return `${ip}:${ua.slice(0, 60)}`;
 }
 
-async function hashKey(key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 16);
-}
-
 function isLimited(key: string): boolean {
   const now = Date.now();
 
@@ -79,9 +68,8 @@ export async function reportClientError(
   const clientHeaders = await headers();
   const requesterKey = getRequesterKey(clientHeaders);
   if (isLimited(requesterKey)) {
-    const hashedKey = await hashKey(requesterKey);
     console.warn("[CLIENT_ERROR_ALERT] Rate limited", {
-      fingerprint: hashedKey,
+      fingerprint: requesterKey.slice(0, 16),
       source: input.source || "CLIENT_ERROR",
     });
     return;

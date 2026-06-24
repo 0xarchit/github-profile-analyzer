@@ -14,7 +14,6 @@
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "canvas-confetti": "^1.9.4",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "critters": "^0.0.23",
     "jose": "^6.2.2",
