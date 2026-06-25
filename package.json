@@ -6,7 +6,10 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
@@ -37,7 +40,8 @@
     "eslint-config-next": "16.2.3",
     "shadcn": "^4.2.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.9"
   },
   "ignoreScripts": [
     "sharp",
