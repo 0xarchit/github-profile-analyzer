@@ -81,9 +81,26 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown_error";
 }
 
+async function saveStarToD1(username: string): Promise<void> {
+  if (!process.env.DB) return;
+  try {
+    await process.env.DB.prepare(
+      "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
+    )
+      .bind(username)
+      .run();
+  } catch (err) {
+    console.error("[D1] Failed to save stargazer to D1:", err);
+  }
+}
+
 async function cacheVerifiedStar(username: string): Promise<void> {
   const normalized = normalizeUsername(username);
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
+  
+  // Save to Cloudflare D1 if available
+  await saveStarToD1(normalized);
+
   const cached = (await getCachedData<string[]>(cacheKey)) || [];
   if (cached.some((s) => normalizeUsername(s) === normalized)) {
     return;
@@ -565,6 +582,29 @@ export async function checkStarStatus(
     hasUserToken: Boolean(userToken),
   });
 
+  // Strategy 0: Cloudflare D1 local database (O(1) lookups)
+  if (process.env.DB) {
+    try {
+      const stmt = process.env.DB.prepare(
+        "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
+      );
+      const res = await stmt.bind(normalizedUsername).first();
+      if (res) {
+        starGateLog("check_pass_d1", { username: normalizedUsername });
+        return true;
+      }
+      starGateLog("check_d1_miss", { username: normalizedUsername });
+    } catch (err) {
+      console.error("[D1] Database query failed, falling back:", err);
+      void sendTelegramAlert({
+        source: "STAR_CHECK_D1",
+        message: "D1 database query failed, falling back",
+        error: err,
+        context: { username: normalizedUsername },
+      }).catch(() => null);
+    }
+  }
+
   // Strategy 1: viewer's own token (direct, most reliable)
   if (userToken) {
     try {
@@ -643,6 +683,23 @@ export async function verifyAndInjectStar(username: string): Promise<boolean> {
   )
     return false;
   starGateLog("verify_guest_start", { username: normalizedUsername });
+
+  // Strategy 0: Cloudflare D1 local database (O(1) lookups)
+  if (process.env.DB) {
+    try {
+      const stmt = process.env.DB.prepare(
+        "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
+      );
+      const res = await stmt.bind(normalizedUsername).first();
+      if (res) {
+        starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
+        return true;
+      }
+    } catch (err) {
+      console.error("[D1] Database query failed in verifyAndInjectStar:", err);
+    }
+  }
+
   const isVerified = await executeBidirectionalStarCheck(normalizedUsername);
   if (isVerified) {
     await cacheVerifiedStar(normalizedUsername);
