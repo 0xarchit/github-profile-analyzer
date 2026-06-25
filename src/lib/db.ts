@@ -101,6 +101,12 @@ async function materializeUser(
   includeAccessToken = false,
 ): Promise<User | null> {
   if (!row) return null;
+  const r = row as Record<string, unknown>;
+  // Validate required fields to guard against schema drift silently producing
+  // undefined values behind the typed interface.
+  if (typeof r.id !== "number" && typeof r.id !== "bigint") return null;
+  if (typeof r.github_id !== "number" && typeof r.github_id !== "bigint") return null;
+  if (typeof r.username !== "string") return null;
   const user = row as User;
   user.settings = normalizeSettings(user.settings);
   if (
