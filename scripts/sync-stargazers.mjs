@@ -12,7 +12,7 @@ if (!DB_NAME) {
 
 function runWrangler(command) {
   try {
-    const output = execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "${command.replace(/"/g, '\\"')}" --json`, {
+    const output = execSync(`npx wrangler d1 execute ${DB_NAME} --remote --command "${command.replace(/"/g, '\\"')}" --json --yes`, {
       env: { ...process.env },
       encoding: 'utf-8'
     });
@@ -100,19 +100,18 @@ async function main() {
     }
 
     const sqlFile = path.join(process.cwd(), 'sync_temp.sql');
-    let sqlContent = 'BEGIN TRANSACTION;\nDELETE FROM stargazers;\n';
+    let sqlContent = 'DELETE FROM stargazers;\n';
     
     for (const sg of stargazers) {
       const escapedUser = sg.username.replace(/'/g, "''");
       sqlContent += `INSERT INTO stargazers (username, created_at) VALUES ('${escapedUser}', '${sg.starred_at}');\n`;
     }
     
-    sqlContent += 'COMMIT;\n';
     fs.writeFileSync(sqlFile, sqlContent);
 
     console.log("Applying batch SQL file to Cloudflare D1...");
     try {
-      execSync(`npx wrangler d1 execute ${DB_NAME} --remote --file=sync_temp.sql`, {
+      execSync(`npx wrangler d1 execute ${DB_NAME} --remote --file=sync_temp.sql --yes`, {
         env: { ...process.env },
         stdio: 'inherit'
       });
