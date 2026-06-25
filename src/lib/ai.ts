@@ -112,6 +112,21 @@ async function callAIWithTimeout(
   }
 }
 
+/**
+ * Calls the GitHub Models inference API to generate an AI analysis of a GitHub profile.
+ *
+ * @param profile        The full `ProfileSummary` to analyse.
+ * @param userToken      Optional OAuth token belonging to the **viewer** (logged-in user).
+ *                       When provided, it is used as the inference API key first,
+ *                       benefiting from that user's GitHub Models quota.
+ *                       Falls back to the shared GITHUB_TOKENS pool on failure.
+ * @param alertCollector Optional `TelegramAlertCollector` for deferred, batched alerts.
+ *                       When provided, errors are collected and flushed together with the
+ *                       caller's other alerts. When omitted, alerts fire immediately.
+ * @throws `Error("CORRUPT_INTELLIGENCE")` if the AI response cannot be parsed or fails
+ *         Zod validation after all retry attempts.
+ * @throws On persistent HTTP errors (e.g. 429, 500) after `AI_RETRY_ATTEMPTS` retries.
+ */
 export async function getAIAnalysis(
   profile: ProfileSummary,
   userToken?: string,

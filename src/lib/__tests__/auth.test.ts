@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // Mock the dependencies before importing the module under test
 vi.mock("next/headers", () => ({
@@ -11,12 +11,12 @@ vi.mock("@/lib/telegram-alert", () => ({
 
 // We test the isValidSession predicate indirectly through verifySession.
 // Import after mocks are set up.
-import { createSession, verifySession } from "../auth";
+import { verifySession } from "../auth";
 
 // A helper to build a minimal valid JWT token for tests
 async function buildValidToken(): Promise<string> {
   // Access the JWT_SECRET from the module
-  const { JWT_SECRET, SESSION_COOKIE } = await import("../auth");
+  const { JWT_SECRET } = await import("../auth");
   const { SignJWT } = await import("jose");
   return new SignJWT({
     githubId: 12345,

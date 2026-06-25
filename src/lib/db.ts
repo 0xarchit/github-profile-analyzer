@@ -203,6 +203,16 @@ export async function upsertUser(user: {
   return result;
 }
 
+/**
+ * Updates a subset of the authenticated user's settings.
+ * Only fields allowed by `normalizeSettingsPatch` can be modified — unknown fields are
+ * silently dropped, preventing unintended field injection.
+ *
+ * @param userId   The internal DB ID of the user performing the update.
+ * @param settings Partial settings to apply (merged into the existing JSONB column).
+ * @throws `Error("INVALID_PRIMARY_SCAN")` if `primary_scan_id` is set to a scan that
+ *         does not belong to this user.
+ */
 export async function updateUserSettings(
   userId: number,
   settings: Partial<UserSettings>,
@@ -230,6 +240,16 @@ export async function updateUserSettings(
   `;
 }
 
+/**
+ * Persists a new analysis scan to the database and enforces a 10-scan rolling window.
+ * After inserting, any scans beyond the 10 most recent for this user are deleted atomically
+ * in the same CTE transaction.
+ *
+ * @param userId   The internal DB ID of the user who owns this scan.
+ * @param username The GitHub login the scan was performed for.
+ * @param data     The full validated analysis result to store.
+ * @returns The newly inserted `Scan` record.
+ */
 export async function saveScan(
   userId: number,
   username: string,
