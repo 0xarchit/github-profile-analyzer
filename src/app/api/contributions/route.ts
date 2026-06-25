@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UsernameSchema } from "@/lib/validation";
 import { getSession, getGuestSession } from "@/lib/auth";
-import { checkStarStatus } from "@/lib/github";
+import { checkStarStatus, fetchGitHubGraphQL, getFallbackToken } from "@/lib/github";
 import { getCachedData, setCachedData } from "@/lib/redis";
 
 export const runtime = "edge";
 
-const GITHUB_TOKENS = (process.env.GITHUB_TOKENS || "")
-  .split(",")
-  .filter(Boolean);
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -81,13 +78,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const token = GITHUB_TOKENS[Math.floor(Math.random() * GITHUB_TOKENS.length)];
-  if (!token) {
-    return NextResponse.json(
-      { error: "GITHUB_TOKENS environment variable is required" },
-      { status: 500 },
-    );
-  }
+  const token = getFallbackToken();
   const query = `
     query($login: String!) {
       user(login: $login) {
@@ -106,18 +97,7 @@ export async function GET(req: NextRequest) {
   `;
 
   try {
-    const res = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "User-Agent": "GitScore-Retro/1.0",
-      },
-      body: JSON.stringify({
-        query,
-        variables: { login: targetUser },
-      }),
-    });
+    const res = await fetchGitHubGraphQL(token, query, { login: targetUser });
 
     if (!res.ok) {
       return new Response(
