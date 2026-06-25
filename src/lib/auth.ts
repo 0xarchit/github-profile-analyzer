@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { sendTelegramAlert } from "./telegram-alert";
 
@@ -27,6 +27,26 @@ function isExpectedJwtFailure(error: unknown): boolean {
   );
 }
 
+/**
+ * Runtime type predicate that validates a JWT payload contains all required
+ * Session fields with the correct types. Prevents silent undefined values
+ * from propagating when field names change or tokens are malformed.
+ */
+function isValidSession(p: JWTPayload): p is JWTPayload & Session {
+  return (
+    typeof (p as Record<string, unknown>).githubId === "number" &&
+    typeof (p as Record<string, unknown>).username === "string" &&
+    typeof (p as Record<string, unknown>).accessToken === "string" &&
+    typeof (p as Record<string, unknown>).avatarUrl === "string"
+  );
+}
+
+/**
+ * Creates a signed JWT session and sets it as an HTTP-only cookie (`gitscore_session`).
+ * The token is signed with HS256 and expires in 7 days.
+ *
+ * @param sessionData The session payload to sign.
+ */
 export async function createSession(sessionData: Session) {
   const token = await new SignJWT({ ...sessionData })
     .setProtectedHeader({ alg: "HS256" })
@@ -66,8 +86,8 @@ export async function getGuestSession(): Promise<string | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    if (payload.verified && payload.username) {
-      return payload.username as string;
+    if (payload.verified === true && typeof payload.username === "string") {
+      return payload.username;
     }
     return null;
   } catch (error) {
@@ -82,10 +102,22 @@ export async function getGuestSession(): Promise<string | null> {
   }
 }
 
+/**
+ * Verifies a raw JWT string and returns the typed `Session` if valid.
+ * Uses `isValidSession()` to perform runtime field validation — returns `null`
+ * if any required field (`githubId`, `username`, `accessToken`, `avatarUrl`) is
+ * missing or has the wrong type, preventing silent undefined propagation.
+ *
+ * @param token  The raw JWT string to verify.
+ * @returns `Session` on success, `null` on invalid/expired/malformed token.
+ */
 export async function verifySession(token: string): Promise<Session | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload as unknown as Session;
+    if (!isValidSession(payload)) {
+      return null;
+    }
+    return payload;
   } catch (error) {
     if (!isExpectedJwtFailure(error)) {
       void sendTelegramAlert({
@@ -98,6 +130,10 @@ export async function verifySession(token: string): Promise<Session | null> {
   }
 }
 
+/**
+ * Reads the `gitscore_session` cookie from the current request and verifies it.
+ * Delegates to `verifySession()` — returns `null` if the cookie is absent or invalid.
+ */
 export async function getSession(): Promise<Session | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
