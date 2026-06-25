@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { normalizeUsername } from "@/lib/github";
+import { normalizeUsername, TARGET_REPO } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
 
 export const runtime = "edge";
@@ -82,12 +82,21 @@ export async function POST(request: Request) {
     sender?: {
       login?: string;
     };
+    repository?: {
+      full_name?: string;
+    };
   };
 
   console.log(`[Webhook] Event: ${eventHeader}, Action: ${typedPayload.action}`);
 
-  // 3. Handle 'watch' event with 'started' action
-  if (eventHeader === "watch" && typedPayload.action === "started") {
+  // 3. Handle 'star' event (created / deleted actions)
+  if (eventHeader === "star") {
+    // Verify repository matches TARGET_REPO
+    if (typedPayload.repository?.full_name?.toLowerCase() !== TARGET_REPO.toLowerCase()) {
+      console.warn(`[Webhook] Ignored event for unrelated repository: ${typedPayload.repository?.full_name}`);
+      return NextResponse.json({ error: "Unrelated repository" }, { status: 400 });
+    }
+
     const sender = typedPayload.sender?.login;
     if (!sender) {
       return NextResponse.json({ error: "Missing sender login" }, { status: 400 });
@@ -97,29 +106,44 @@ export async function POST(request: Request) {
 
     if (process.env.DB) {
       try {
-        await process.env.DB.prepare(
-          "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
-        )
-          .bind(normalized)
-          .run();
-        
-        console.log(`[Webhook] Successfully saved stargazer: ${normalized}`);
-        
-        void sendTelegramAlert({
-          source: "WEBHOOK_STAR",
-          message: `⭐️ User starred the repo and synced to D1: ${normalized}`,
-          context: { username: normalized },
-        }).catch(() => null);
-
+        if (typedPayload.action === "created") {
+          await process.env.DB.prepare(
+            "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
+          )
+            .bind(normalized)
+            .run();
+          
+          console.log(`[Webhook] Successfully saved stargazer: ${normalized}`);
+          
+          void sendTelegramAlert({
+            source: "WEBHOOK_STAR_ADD",
+            message: `⭐️ User starred the repo and synced to D1: ${normalized}`,
+            context: { username: normalized },
+          }).catch(() => null);
+        } else if (typedPayload.action === "deleted") {
+          await process.env.DB.prepare(
+            "DELETE FROM stargazers WHERE username = ?"
+          )
+            .bind(normalized)
+            .run();
+          
+          console.log(`[Webhook] Successfully removed stargazer: ${normalized}`);
+          
+          void sendTelegramAlert({
+            source: "WEBHOOK_STAR_REMOVE",
+            message: `🗑️ User unstarred the repo and removed from D1: ${normalized}`,
+            context: { username: normalized },
+          }).catch(() => null);
+        }
       } catch (dbErr) {
-        console.error("[Webhook] Failed to insert stargazer in D1:", dbErr);
+        console.error(`[Webhook] Failed to update stargazer (${typedPayload.action}) in D1:`, dbErr);
         void sendTelegramAlert({
           source: "WEBHOOK_STAR_ERROR",
-          message: "Failed to save stargazer in D1",
+          message: `Failed to update stargazer (${typedPayload.action}) in D1`,
           error: dbErr,
           context: { username: normalized },
         }).catch(() => null);
-        return NextResponse.json({ error: "Database insertion failed" }, { status: 500 });
+        return NextResponse.json({ error: "Database operation failed" }, { status: 500 });
       }
     } else {
       console.error("[Webhook] D1 Database binding DB is not available in environment");

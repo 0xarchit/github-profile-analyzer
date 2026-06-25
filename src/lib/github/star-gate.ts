@@ -35,7 +35,7 @@ const STAR_GATE_DEBUG = process.env.STAR_GATE_DEBUG === "1";
 
 const TARGET_OWNER = "0xarchit";
 const TARGET_NAME = "github-profile-analyzer";
-const TARGET_REPO = `${TARGET_OWNER}/${TARGET_NAME}`;
+export const TARGET_REPO = `${TARGET_OWNER}/${TARGET_NAME}`;
 
 // ---------------------------------------------------------------------------
 // Types

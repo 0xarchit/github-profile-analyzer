@@ -9,6 +9,7 @@ export {
   verifyAndInjectStar,
   getRepoStarCount,
   normalizeUsername,
+  TARGET_REPO,
 } from "./star-gate";
 export {
   getFallbackToken,
