@@ -196,6 +196,9 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
         status: response.status,
         statusText: response.statusText,
       });
+      if (!response.ok) {
+        throw new Error(`AI API error: ${response.status}`);
+      }
       break;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));

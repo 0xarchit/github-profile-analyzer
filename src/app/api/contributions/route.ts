@@ -78,7 +78,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const token = getFallbackToken();
   const query = `
     query($login: String!) {
       user(login: $login) {
@@ -97,6 +96,7 @@ export async function GET(req: NextRequest) {
   `;
 
   try {
+    const token = getFallbackToken();
     const res = await fetchGitHubGraphQL(token, query, { login: targetUser });
 
     if (!res.ok) {

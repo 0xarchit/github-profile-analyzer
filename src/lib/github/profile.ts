@@ -56,9 +56,9 @@ async function checkAchievementStatus(
 ): Promise<string | null> {
   const cacheKey = `achievement:${normalizeUsername(username)}:${slug}`;
 
-  const cached = await getCachedData<string | null>(cacheKey);
+  const cached = await getCachedData<string>(cacheKey);
   if (cached !== null && cached !== undefined) {
-    return cached;
+    return cached === "__NONE__" ? null : cached;
   }
 
   const url = `https://github.com/${encodeURIComponent(username)}?tab=achievements&achievement=${slug}`;
@@ -68,13 +68,14 @@ async function checkAchievementStatus(
       headers: { "User-Agent": "GitScore/1.1" },
     });
     const value = res.status === 200 ? slug : null;
-    await setCachedData(cacheKey, value, ACHIEVEMENT_CACHE_TTL_SECONDS);
+    await setCachedData(cacheKey, value === null ? "__NONE__" : value, ACHIEVEMENT_CACHE_TTL_SECONDS);
     return value;
   } catch {
-    await setCachedData(cacheKey, null, ACHIEVEMENT_CACHE_TTL_SECONDS);
+    await setCachedData(cacheKey, "__NONE__", ACHIEVEMENT_CACHE_TTL_SECONDS);
     return null;
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Rank / trophy helpers
@@ -180,7 +181,7 @@ export async function getProfileSummary(
   const token = userToken || getFallbackToken();
   console.log("[GITHUB_API] Using token", { hasUserToken: !!userToken });
   const query = `
-    query($login: String!) {
+    query($login: String!, $after: String) {
       user(login: $login) {
         avatarUrl, login, name, bio, followers { totalCount }, following { totalCount }
         contributionsCollection {
@@ -190,7 +191,9 @@ export async function getProfileSummary(
             weeks { contributionDays { contributionCount, date, color } }
           }
         }
-        repositories(first: 60, ownerAffiliations: [OWNER], orderBy: {field: STARGAZERS, direction: DESC}) {
+        repositories(first: 100, after: $after, ownerAffiliations: [OWNER], orderBy: {field: STARGAZERS, direction: DESC}) {
+          totalCount
+          pageInfo { hasNextPage, endCursor }
           nodes {
             name, description, stargazerCount, forkCount, isFork, primaryLanguage { name }
             openIssues: issues(states: OPEN) { totalCount }
@@ -198,7 +201,15 @@ export async function getProfileSummary(
             repositoryTopics(first: 5) { nodes { topic { name } } }
           }
         }
-        repositoriesContributedTo(first: 40, includeUserRepositories: true, contributionTypes: [COMMIT, PULL_REQUEST, PULL_REQUEST_REVIEW]) {
+      }
+    }
+  `;
+
+  const pageQuery = `
+    query($login: String!, $after: String) {
+      user(login: $login) {
+        repositories(first: 100, after: $after, ownerAffiliations: [OWNER], orderBy: {field: STARGAZERS, direction: DESC}) {
+          pageInfo { hasNextPage, endCursor }
           nodes {
             name, description, stargazerCount, forkCount, isFork, primaryLanguage { name }
             openIssues: issues(states: OPEN) { totalCount }
@@ -212,9 +223,10 @@ export async function getProfileSummary(
 
   const requestSummary = async (authToken: string) => {
     console.log("[GITHUB_API] Sending profile summary request", { username });
-    return fetchGitHubGraphQL(authToken, query, { login: username });
+    return fetchGitHubGraphQL(authToken, query, { login: username, after: null });
   };
 
+  let successfulToken = token;
   let res = await requestSummary(token);
   console.log("[GITHUB_API] Initial profile request completed", {
     status: res.status,
@@ -223,6 +235,7 @@ export async function getProfileSummary(
     console.log("[GITHUB_API] Auth failed, retrying with fallback token");
     const retryToken = getFallbackToken();
     res = await requestSummary(retryToken);
+    successfulToken = retryToken;
     console.log("[GITHUB_API] Retry request completed", { status: res.status });
     if (res.status === 401 || res.status === 403) {
       console.error("[GITHUB_API] Both auth attempts failed");
@@ -278,12 +291,36 @@ export async function getProfileSummary(
   });
 
   const coll = user.contributionsCollection;
-  const ownedNodes = user.repositories.nodes || [];
+  const initialRepos = user.repositories.nodes || [];
+  let allRepos: GithubRepoNode[] = [...initialRepos];
 
-  const authoredRepos = ownedNodes.filter((r: GithubRepoNode) => !r.isFork);
+  let hasNext = user.repositories.pageInfo.hasNextPage;
+  let cursor = user.repositories.pageInfo.endCursor;
+  let pageCount = 1;
+
+  while (hasNext && cursor && pageCount < 10) {
+    console.log("[GITHUB_API] Fetching next page of repositories", { cursor, pageCount });
+    const pageRes = await fetchGitHubGraphQL(successfulToken, pageQuery, { login: username, after: cursor });
+    if (!pageRes.ok) {
+      console.warn("[GITHUB_API] Failed to fetch next page of repositories, continuing with collected repos");
+      break;
+    }
+    const pageBody = await pageRes.json();
+    if (pageBody.errors || !pageBody.data?.user?.repositories) {
+      console.warn("[GITHUB_API] GraphQL errors in page, continuing with collected repos", pageBody.errors);
+      break;
+    }
+    const repoData = pageBody.data.user.repositories;
+    allRepos.push(...(repoData.nodes || []));
+    hasNext = repoData.pageInfo.hasNextPage;
+    cursor = repoData.pageInfo.endCursor;
+    pageCount++;
+  }
+
+  const allAuthoredRepos = allRepos.filter((r: GithubRepoNode) => !r.isFork);
 
   let total_stars = 0;
-  authoredRepos.forEach(
+  allAuthoredRepos.forEach(
     (r: GithubRepoNode) => (total_stars += r.stargazerCount),
   );
 
@@ -317,7 +354,7 @@ export async function getProfileSummary(
       value: (v / total) * 100,
       color: cols[i % cols.length],
     }));
-  })(authoredRepos);
+  })(allAuthoredRepos);
 
   const t_configs = [
     { name: "Stars", val: total_stars, th: [10, 100, 500, 1000] },
@@ -344,7 +381,7 @@ export async function getProfileSummary(
     },
     {
       name: "Authored Repos",
-      val: authoredRepos.length,
+      val: allAuthoredRepos.length,
       th: [10, 30, 50, 100],
     },
   ];
@@ -390,9 +427,9 @@ export async function getProfileSummary(
     bio: user.bio,
     followers: user.followers.totalCount,
     following: user.following.totalCount,
-    public_repo_count: authoredRepos.length,
+    public_repo_count: user.repositories.totalCount,
     total_stars,
-    original_repos: authoredRepos.reduce(
+    original_repos: allAuthoredRepos.slice(0, 60).reduce(
       (
         acc: Record<
           string,

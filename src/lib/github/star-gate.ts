@@ -440,20 +440,13 @@ async function executeRestFallbackStarCheck(
   repoStars = 0,
   userStars = 0,
 ): Promise<boolean> {
-  const repoPages = Math.max(
-    1,
-    Math.min(
-      Math.ceil((repoStars > 0 ? repoStars : STAR_PAGE_SIZE) / STAR_PAGE_SIZE),
-      STAR_REST_LIMIT,
-    ),
-  );
-  const userPages = Math.max(
-    1,
-    Math.min(
-      Math.ceil((userStars > 0 ? userStars : STAR_PAGE_SIZE) / STAR_PAGE_SIZE),
-      STAR_REST_LIMIT,
-    ),
-  );
+  const limitPages = Math.ceil(STAR_REST_LIMIT / STAR_PAGE_SIZE);
+  const repoPages = repoStars > 0
+    ? Math.max(1, Math.min(Math.ceil(repoStars / STAR_PAGE_SIZE), limitPages))
+    : limitPages;
+  const userPages = userStars > 0
+    ? Math.max(1, Math.min(Math.ceil(userStars / STAR_PAGE_SIZE), limitPages))
+    : limitPages;
 
   if (await scanRepoStargazersRest(username, token, repoPages)) return true;
   return scanUserStarredRest(username, token, userPages);

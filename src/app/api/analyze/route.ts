@@ -196,7 +196,8 @@ export async function GET(request: NextRequest) {
     });
     let hasTargetStarred = false;
     if (!isOwnerOfTarget) {
-      hasTargetStarred = await checkStarStatus(username, scannerToken);
+      const viewerUsername = session?.username || username;
+      hasTargetStarred = await checkStarStatus(viewerUsername, scannerToken);
     } else {
       hasTargetStarred = true;
     }

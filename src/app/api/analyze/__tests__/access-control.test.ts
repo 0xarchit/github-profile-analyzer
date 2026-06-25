@@ -4,14 +4,13 @@ import { NextRequest } from "next/server";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
 import { getAIAnalysis } from "@/lib/ai";
 import { getSession } from "@/lib/auth";
-import { getCachedData, setCachedData } from "@/lib/redis";
+import { getCachedData } from "@/lib/redis";
 import {
   getUserByUsername,
   saveScan,
-  getScanById,
   getUserByGithubId,
-  getLatestSelfScan,
 } from "@/lib/db";
+import type { User } from "@/lib/db";
 
 // Mock all external modules to avoid actual network/DB calls
 vi.mock("@/lib/github", () => ({
@@ -47,6 +46,72 @@ vi.mock("@/lib/telegram-alert", () => ({
   })),
 }));
 
+// Shared Mock Builders to satisfy type checking without "any"
+const createMockUser = (overrides: Partial<User> = {}): User => ({
+  id: 123,
+  github_id: 111,
+  username: "targetuser",
+  avatar_url: "",
+  access_token: "encrypted_token",
+  settings: {
+    profile_locked: false,
+    keep_history: true,
+    public_scans: true,
+    primary_scan_id: null,
+  },
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  ...overrides,
+});
+
+type ProfileSummaryResult = Awaited<ReturnType<typeof getProfileSummary>>;
+type AIAnalysisResult = Awaited<ReturnType<typeof getAIAnalysis>>;
+
+const createMockProfileSummary = (overrides: Partial<ProfileSummaryResult> = {}): ProfileSummaryResult => ({
+  username: "targetuser",
+  name: "Target User",
+  bio: null,
+  followers: 10,
+  following: 5,
+  avatar: null,
+  total_stars: 50,
+  public_repo_count: 5,
+  original_repos: {},
+  career_stats: {
+    total_contributions: 200,
+    total_commits: 150,
+    total_prs: 20,
+    total_issues: 10,
+    total_reviews: 5,
+    daily_streak: 3,
+    daily_best: 10,
+    weekly_streak: 2,
+    weekly_best: 5,
+    top_languages: [],
+    commit_activity: [],
+    trophies: [],
+  },
+  calendar_data: {
+    weeks: [],
+  },
+  badges: {},
+  ...overrides,
+});
+
+const createMockAIAnalysis = (overrides: Partial<AIAnalysisResult> = {}): AIAnalysisResult => ({
+  score: 85,
+  developer_type: "Backend Engineer",
+  segments: {
+    roast: "Brutal roast",
+    technical_analysis: "Technical details",
+    strategic_advice: "Strategic advice",
+  },
+  improvement_areas: [],
+  diagnostics: [],
+  timestamp: new Date().toISOString(),
+  ...overrides,
+});
+
 describe("analyze route access-control & routing logic", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -71,7 +136,7 @@ describe("analyze route access-control & routing logic", () => {
   });
 
   it("2. Owner force-refreshing own profile -> allowed & calls saveScan", async () => {
-    const mockUser = { id: "user-123", username: "targetuser", settings: { keep_history: true } };
+    const mockUser = createMockUser({ id: 123, username: "targetuser" });
     vi.mocked(getSession).mockResolvedValue({
       githubId: 111,
       username: "targetuser",
@@ -81,16 +146,8 @@ describe("analyze route access-control & routing logic", () => {
     vi.mocked(getUserByGithubId).mockResolvedValue(mockUser);
     vi.mocked(getUserByUsername).mockResolvedValue(mockUser);
 
-    vi.mocked(getProfileSummary).mockResolvedValue({
-      original_repos: {},
-      username: "targetuser",
-    } as any);
-
-    vi.mocked(getAIAnalysis).mockResolvedValue({
-      score: 85,
-      developer_type: "Backend Engineer",
-      segments: [],
-    } as any);
+    vi.mocked(getProfileSummary).mockResolvedValue(createMockProfileSummary({ username: "targetuser" }));
+    vi.mocked(getAIAnalysis).mockResolvedValue(createMockAIAnalysis({ score: 85 }));
 
     const req = new NextRequest("http://localhost/api/analyze?username=targetuser&force=true");
     const res = await GET(req);
@@ -101,12 +158,12 @@ describe("analyze route access-control & routing logic", () => {
     expect(body.username).toBe("targetuser");
 
     // Owner should trigger database save
-    expect(saveScan).toHaveBeenCalledWith("user-123", "targetuser", expect.any(Object));
+    expect(saveScan).toHaveBeenCalledWith(123, "targetuser", expect.any(Object));
   });
 
   it("3. Non-owner force-refreshing registered user -> 403 ACCESS_DENIED", async () => {
-    const mockViewer = { id: "user-viewer", username: "vieweruser" };
-    const mockTarget = { id: "user-target", username: "targetuser" };
+    const mockViewer = createMockUser({ id: 999, username: "vieweruser" });
+    const mockTarget = createMockUser({ id: 123, username: "targetuser" });
 
     vi.mocked(getSession).mockResolvedValue({
       githubId: 222,
@@ -129,12 +186,17 @@ describe("analyze route access-control & routing logic", () => {
   });
 
   it("4. Private profile, no principal scan, non-owner -> 403 ACCESS_DENIED", async () => {
-    const mockViewer = { id: "user-viewer", username: "vieweruser" };
-    const mockTarget = {
-      id: "user-target",
+    const mockViewer = createMockUser({ id: 999, username: "vieweruser" });
+    const mockTarget = createMockUser({
+      id: 123,
       username: "targetuser",
-      settings: { public_scans: false, primary_scan_id: null },
-    };
+      settings: {
+        profile_locked: false,
+        keep_history: true,
+        public_scans: false,
+        primary_scan_id: null,
+      },
+    });
 
     vi.mocked(getSession).mockResolvedValue({
       githubId: 222,
@@ -150,6 +212,7 @@ describe("analyze route access-control & routing logic", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(403);
+    expect(checkStarStatus).toHaveBeenCalledWith("vieweruser", "gho_viewer_token");
     const body = await res.json();
     expect(body).toEqual({
       error: "ACCESS_DENIED",
@@ -158,12 +221,17 @@ describe("analyze route access-control & routing logic", () => {
   });
 
   it("5. Public profile, non-owner -> proceeds to analysis but does not saveScan", async () => {
-    const mockViewer = { id: "user-viewer", username: "vieweruser" };
-    const mockTarget = {
-      id: "user-target",
+    const mockViewer = createMockUser({ id: 999, username: "vieweruser" });
+    const mockTarget = createMockUser({
+      id: 123,
       username: "targetuser",
-      settings: { public_scans: true, primary_scan_id: null },
-    };
+      settings: {
+        profile_locked: false,
+        keep_history: true,
+        public_scans: true,
+        primary_scan_id: null,
+      },
+    });
 
     vi.mocked(getSession).mockResolvedValue({
       githubId: 222,
@@ -175,21 +243,14 @@ describe("analyze route access-control & routing logic", () => {
     vi.mocked(getUserByUsername).mockResolvedValue(mockTarget);
     vi.mocked(checkStarStatus).mockResolvedValue(true);
 
-    vi.mocked(getProfileSummary).mockResolvedValue({
-      original_repos: {},
-      username: "targetuser",
-    } as any);
-
-    vi.mocked(getAIAnalysis).mockResolvedValue({
-      score: 92,
-      developer_type: "Frontend Specialist",
-      segments: [],
-    } as any);
+    vi.mocked(getProfileSummary).mockResolvedValue(createMockProfileSummary({ username: "targetuser" }));
+    vi.mocked(getAIAnalysis).mockResolvedValue(createMockAIAnalysis({ score: 92, developer_type: "Frontend Specialist" }));
 
     const req = new NextRequest("http://localhost/api/analyze?username=targetuser");
     const res = await GET(req);
 
     expect(res.status).toBe(200);
+    expect(checkStarStatus).toHaveBeenCalledWith("vieweruser", "gho_viewer_token");
     const body = await res.json();
     expect(body.score).toBe(92);
 

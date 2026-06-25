@@ -125,6 +125,7 @@ describe("getAIAnalysis", () => {
   });
 
   it("throws on HTTP 429 after all retries", async () => {
+    vi.useFakeTimers();
     mockFetch.mockImplementation(() =>
       Promise.resolve({
         ok: false,
@@ -132,6 +133,11 @@ describe("getAIAnalysis", () => {
         text: () => Promise.resolve("rate limited"),
       } as unknown as Response),
     );
-    await expect(getAIAnalysis(MINIMAL_PROFILE, "test-token")).rejects.toThrow();
+    const promise = getAIAnalysis(MINIMAL_PROFILE, "test-token");
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).rejects.toThrow();
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
   });
 });

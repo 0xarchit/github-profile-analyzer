@@ -86,7 +86,7 @@ export async function getGuestSession(): Promise<string | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    if (payload.verified && typeof payload.username === "string") {
+    if (payload.verified === true && typeof payload.username === "string") {
       return payload.username;
     }
     return null;

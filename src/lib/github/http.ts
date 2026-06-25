@@ -12,11 +12,8 @@
 
 export const GITHUB_TOKENS = (process.env.GITHUB_TOKENS || "")
   .split(",")
+  .map((t) => t.trim())
   .filter(Boolean);
-
-if (GITHUB_TOKENS.length === 0) {
-  throw new Error("GITHUB_TOKENS environment variable is required");
-}
 
 export const GITHUB_FETCH_TIMEOUT_MS = 10_000;
 
@@ -25,6 +22,9 @@ export const GITHUB_FETCH_TIMEOUT_MS = 10_000;
  * Throws if the pool is empty (guards against runtime env misconfiguration).
  */
 export function getFallbackToken(): string {
+  if (GITHUB_TOKENS.length === 0) {
+    throw new Error("GITHUB_TOKENS environment variable is required");
+  }
   const token = GITHUB_TOKENS[Math.floor(Math.random() * GITHUB_TOKENS.length)];
   if (!token) throw new Error("GITHUB_TOKENS environment variable is required");
   return token;
