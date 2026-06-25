@@ -111,7 +111,6 @@ export async function deleteCachedData(key: string): Promise<void> {
   try {
     console.log("[CACHE] Deleting cache key", { key: normalizedKey });
     await redis.del(normalizedKey);
-    await redis.del(key);
     console.log("[CACHE] Cache key deleted", { key: normalizedKey });
   } catch (err) {
     console.error("[CACHE] Redis delete failure", {

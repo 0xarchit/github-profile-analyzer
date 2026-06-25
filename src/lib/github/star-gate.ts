@@ -94,6 +94,21 @@ async function saveStarToD1(username: string): Promise<void> {
   }
 }
 
+async function isStarredInD1(username: string): Promise<boolean> {
+  if (!process.env.DB) return false;
+  try {
+    const res = await process.env.DB.prepare(
+      "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
+    )
+      .bind(username)
+      .first();
+    return !!res;
+  } catch (err) {
+    console.error("[D1] Database query failed:", err);
+    return false;
+  }
+}
+
 async function cacheVerifiedStar(username: string): Promise<void> {
   const normalized = normalizeUsername(username);
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
@@ -584,25 +599,12 @@ export async function checkStarStatus(
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
   if (process.env.DB) {
-    try {
-      const stmt = process.env.DB.prepare(
-        "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
-      );
-      const res = await stmt.bind(normalizedUsername).first();
-      if (res) {
-        starGateLog("check_pass_d1", { username: normalizedUsername });
-        return true;
-      }
-      starGateLog("check_d1_miss", { username: normalizedUsername });
-    } catch (err) {
-      console.error("[D1] Database query failed, falling back:", err);
-      void sendTelegramAlert({
-        source: "STAR_CHECK_D1",
-        message: "D1 database query failed, falling back",
-        error: err,
-        context: { username: normalizedUsername },
-      }).catch(() => null);
+    const isStarred = await isStarredInD1(normalizedUsername);
+    if (isStarred) {
+      starGateLog("check_pass_d1", { username: normalizedUsername });
+      return true;
     }
+    starGateLog("check_d1_miss", { username: normalizedUsername });
   }
 
   // Strategy 1: viewer's own token (direct, most reliable)
@@ -686,17 +688,10 @@ export async function verifyAndInjectStar(username: string): Promise<boolean> {
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
   if (process.env.DB) {
-    try {
-      const stmt = process.env.DB.prepare(
-        "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
-      );
-      const res = await stmt.bind(normalizedUsername).first();
-      if (res) {
-        starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
-        return true;
-      }
-    } catch (err) {
-      console.error("[D1] Database query failed in verifyAndInjectStar:", err);
+    const isStarred = await isStarredInD1(normalizedUsername);
+    if (isStarred) {
+      starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
+      return true;
     }
   }
 
