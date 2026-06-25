@@ -597,17 +597,7 @@ export async function checkStarStatus(
     hasUserToken: Boolean(userToken),
   });
 
-  // Strategy 0: Cloudflare D1 local database (O(1) lookups)
-  if (process.env.DB) {
-    const isStarred = await isStarredInD1(normalizedUsername);
-    if (isStarred) {
-      starGateLog("check_pass_d1", { username: normalizedUsername });
-      return true;
-    }
-    starGateLog("check_d1_miss", { username: normalizedUsername });
-  }
-
-  // Strategy 1: viewer's own token (direct, most reliable)
+  // Strategy 1: viewer's own token (direct, most reliable, check first to ensure freshness)
   if (userToken) {
     try {
       const res = await githubFetchWithTimeout(
@@ -632,6 +622,16 @@ export async function checkStarStatus(
     } catch (e) {
       console.error("REST star check failed:", e);
     }
+  }
+
+  // Strategy 0: Cloudflare D1 local database (O(1) lookups)
+  if (process.env.DB) {
+    const isStarred = await isStarredInD1(normalizedUsername);
+    if (isStarred) {
+      starGateLog("check_pass_d1", { username: normalizedUsername });
+      return true;
+    }
+    starGateLog("check_d1_miss", { username: normalizedUsername });
   }
 
   // Strategy 2: Redis cache

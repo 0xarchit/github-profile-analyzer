@@ -54,29 +54,41 @@ export async function POST(request: Request) {
   }
 
   // 1. Verify HMAC Signature
-  if (WEBHOOK_SECRET) {
-    const isValid = await verifySignature(WEBHOOK_SECRET, bodyText, signatureHeader);
-    if (!isValid) {
-      console.warn("[Webhook] Invalid signature received");
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
-  } else {
-    console.warn("[Webhook] GITHUB_WEBHOOK_SECRET is not configured. Skipping signature verification.");
+  if (!WEBHOOK_SECRET) {
+    console.error("[Webhook] GITHUB_WEBHOOK_SECRET is not configured. Failing closed.");
+    return NextResponse.json({ error: "Webhook configuration error" }, { status: 500 });
+  }
+
+  const isValid = await verifySignature(WEBHOOK_SECRET, bodyText, signatureHeader);
+  if (!isValid) {
+    console.warn("[Webhook] Invalid signature received");
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   // 2. Parse payload
-  let payload: any;
+  let payload: unknown;
   try {
     payload = JSON.parse(bodyText);
   } catch (err) {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
-  console.log(`[Webhook] Event: ${eventHeader}, Action: ${payload.action}`);
+  if (!payload || typeof payload !== "object") {
+    return NextResponse.json({ error: "Invalid payload shape" }, { status: 400 });
+  }
+
+  const typedPayload = payload as {
+    action?: string;
+    sender?: {
+      login?: string;
+    };
+  };
+
+  console.log(`[Webhook] Event: ${eventHeader}, Action: ${typedPayload.action}`);
 
   // 3. Handle 'watch' event with 'started' action
-  if (eventHeader === "watch" && payload.action === "started") {
-    const sender = payload.sender?.login;
+  if (eventHeader === "watch" && typedPayload.action === "started") {
+    const sender = typedPayload.sender?.login;
     if (!sender) {
       return NextResponse.json({ error: "Missing sender login" }, { status: 400 });
     }

@@ -83,12 +83,7 @@ async function main() {
     const d1Count = d1Result[0]?.results?.[0]?.count ?? 0;
     console.log(`D1 database stargazers count: ${d1Count}`);
 
-    if (githubCount === d1Count) {
-      console.log("Database count matches GitHub count. Sync is not required.");
-      process.exit(0);
-    }
-
-    console.log("Counts mismatch! Initiating full synchronization...");
+    console.log("Initiating full synchronization...");
     const stargazers = await fetchAllStargazers();
     console.log(`Fetched ${stargazers.length} stargazers from GitHub API.`);
 
@@ -100,13 +95,23 @@ async function main() {
     }
 
     const sqlFile = path.join(process.cwd(), 'sync_temp.sql');
-    let sqlContent = 'DELETE FROM stargazers;\n';
+    let sqlContent = `
+DROP TABLE IF EXISTS stargazers_new;
+CREATE TABLE stargazers_new (
+    username TEXT PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+`;
     
     for (const sg of stargazers) {
       const escapedUser = sg.username.replace(/'/g, "''");
-      sqlContent += `INSERT INTO stargazers (username, created_at) VALUES ('${escapedUser}', '${sg.starred_at}');\n`;
+      sqlContent += `INSERT INTO stargazers_new (username, created_at) VALUES ('${escapedUser}', '${sg.starred_at}');\n`;
     }
     
+    sqlContent += `
+DROP TABLE IF EXISTS stargazers;
+ALTER TABLE stargazers_new RENAME TO stargazers;
+`;
     fs.writeFileSync(sqlFile, sqlContent);
 
     console.log("Applying batch SQL file to Cloudflare D1...");
