@@ -179,6 +179,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
   let response: Response | null = null;
 
   for (let attempt = 1; attempt <= AI_RETRY_ATTEMPTS; attempt++) {
+    response = null;
     try {
       console.log("[AI_ANALYSIS] Sending request to GitHub AI API", {
         attempt,

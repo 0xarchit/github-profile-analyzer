@@ -292,7 +292,7 @@ export async function getProfileSummary(
 
   const coll = user.contributionsCollection;
   const initialRepos = user.repositories.nodes || [];
-  let allRepos: GithubRepoNode[] = [...initialRepos];
+  const allRepos: GithubRepoNode[] = [...initialRepos];
 
   let hasNext = user.repositories.pageInfo.hasNextPage;
   let cursor = user.repositories.pageInfo.endCursor;
@@ -302,13 +302,14 @@ export async function getProfileSummary(
     console.log("[GITHUB_API] Fetching next page of repositories", { cursor, pageCount });
     const pageRes = await fetchGitHubGraphQL(successfulToken, pageQuery, { login: username, after: cursor });
     if (!pageRes.ok) {
-      console.warn("[GITHUB_API] Failed to fetch next page of repositories, continuing with collected repos");
-      break;
+      throw new Error(`Failed to fetch next page of repositories: HTTP ${pageRes.status}`);
     }
     const pageBody = await pageRes.json();
-    if (pageBody.errors || !pageBody.data?.user?.repositories) {
-      console.warn("[GITHUB_API] GraphQL errors in page, continuing with collected repos", pageBody.errors);
-      break;
+    if (pageBody.errors) {
+      throw new Error(`GraphQL error on repositories page: ${pageBody.errors[0]?.message || "graphql_error"}`);
+    }
+    if (!pageBody.data?.user?.repositories) {
+      throw new Error("Invalid response format on repositories page");
     }
     const repoData = pageBody.data.user.repositories;
     allRepos.push(...(repoData.nodes || []));
