@@ -115,11 +115,11 @@ export async function POST(request: Request) {
           
           console.log(`[Webhook] Successfully saved stargazer: ${normalized}`);
           
-          void sendTelegramAlert({
+          await sendTelegramAlert({
             source: "WEBHOOK_STAR_ADD",
             message: `⭐️ User starred the repo and synced to D1: ${normalized}`,
             context: { username: normalized },
-          }).catch(() => null);
+          });
         } else if (typedPayload.action === "deleted") {
           await process.env.DB.prepare(
             "DELETE FROM stargazers WHERE username = ?"
@@ -129,20 +129,20 @@ export async function POST(request: Request) {
           
           console.log(`[Webhook] Successfully removed stargazer: ${normalized}`);
           
-          void sendTelegramAlert({
+          await sendTelegramAlert({
             source: "WEBHOOK_STAR_REMOVE",
             message: `🗑️ User unstarred the repo and removed from D1: ${normalized}`,
             context: { username: normalized },
-          }).catch(() => null);
+          });
         }
       } catch (dbErr) {
         console.error(`[Webhook] Failed to update stargazer (${typedPayload.action}) in D1:`, dbErr);
-        void sendTelegramAlert({
+        await sendTelegramAlert({
           source: "WEBHOOK_STAR_ERROR",
           message: `Failed to update stargazer (${typedPayload.action}) in D1`,
           error: dbErr,
           context: { username: normalized },
-        }).catch(() => null);
+        });
         return NextResponse.json({ error: "Database operation failed" }, { status: 500 });
       }
     } else {
