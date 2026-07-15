@@ -37,6 +37,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.9",
+    "@cloudflare/next-on-pages": "^1.13.16",
+    "wrangler": "^4.111.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "shadcn": "^4.2.0",
