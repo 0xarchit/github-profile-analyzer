@@ -151,11 +151,11 @@ src/
 
 ## Contributing
 
-Contributions are welcome. Please see [CONTRIBUTING.md](https://github.com/0xarchit/github-profile-analyzer?tab=contributing-ov-file) for guidelines.
+Contributions are welcome. Please see [CONTRIBUTING.md](https://github.com/0xarchit/github-profile-analyzer?tab=contributing-ov-file#contributing-to-github-profile-analyzer) for guidelines.
 
 ## Security
 
-For security vulnerabilities, see [SECURITY.md](https://github.com/0xarchit/github-profile-analyzer?tab=contributing-ov-file).
+For security vulnerabilities, see [SECURITY.md](https://github.com/0xarchit/github-profile-analyzer?tab=contributing-ov-file#security-policy).
 
 ## License
 
