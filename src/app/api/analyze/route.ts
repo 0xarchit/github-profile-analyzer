@@ -4,7 +4,7 @@ import type { ValidatedAnalysisResult } from "@/lib/validation";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
 import { getAIAnalysis } from "@/lib/ai";
 import { getSession } from "@/lib/auth";
-import { getCachedData, setCachedData } from "@/lib/redis";
+import { getCachedData, setCachedData, deleteCachedData } from "@/lib/redis";
 import { TelegramAlertCollector } from "@/lib/telegram-alert";
 import {
   getUserByUsername,
@@ -12,9 +12,13 @@ import {
   getScanById,
   getUserByGithubId,
   getLatestSelfScan,
+  insertAnalytics,
 } from "@/lib/db";
 
-export const runtime = "edge";
+// Node runtime — Modal.com endpoint may need longer timeouts than Edge allows
+export const runtime = "nodejs";
+
+const ANALYTICS_CACHE_KEY = "analytics:summary";
 
 type AnalyzedPayload = ValidatedAnalysisResult & {
   isStarred: boolean;
@@ -110,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     if (isAbortError) {
       console.error("[ANALYZE] Request timeout/abort detected", {
-        timeout: "15s for AI or 10s for GitHub API",
+        timeout: "45s for AI or 10s for GitHub API",
       });
       return NextResponse.json(
         {
@@ -190,17 +194,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Star-gate enforcement ──────────────────────────────────────────────
+    // All users must have starred the repo to view any profile.
+    // Only exception: the profile owner viewing their own profile.
     console.log("[ANALYZE] Checking star status", {
       isOwnerOfTarget,
-      username,
+      viewerUsername: session?.username ?? "anonymous",
     });
     let hasTargetStarred = false;
-    if (!isOwnerOfTarget) {
-      const viewerUsername = session?.username || username;
-      hasTargetStarred = await checkStarStatus(viewerUsername, scannerToken);
-    } else {
+    if (isOwnerOfTarget) {
+      // Owner is always allowed to view their own profile
       hasTargetStarred = true;
+    } else if (session?.username) {
+      // Authenticated (non-owner) users must have starred the repo
+      hasTargetStarred = await checkStarStatus(session.username, scannerToken);
     }
+    // Unauthenticated (anonymous) users fall through with hasTargetStarred = false
     console.log("[ANALYZE] Star status resolved", { hasTargetStarred });
 
     if (!hasTargetStarred) {
@@ -304,14 +313,28 @@ export async function GET(request: NextRequest) {
         });
 
         console.log("[ANALYZE] Starting AI analysis");
-        const analysis = await getAIAnalysis(
+        const { analysis, usage } = await getAIAnalysis(
           profile,
-          scannerToken,
           alertCollector,
         );
         console.log("[ANALYZE] AI analysis completed", {
           score: analysis.score,
+          usage,
         });
+
+        // Fire-and-forget analytics insert — never blocks or fails the response
+        void insertAnalytics({
+          username,
+          model: usage.model,
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          total_tokens: usage.total_tokens,
+          duration_ms: usage.duration_ms,
+          success: true,
+        });
+
+        // Invalidate the analytics summary cache so /analytics reflects new data
+        void deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
 
         const finalData: AnalyzedPayload = {
           ...profile,
@@ -327,7 +350,6 @@ export async function GET(request: NextRequest) {
         return finalData;
       };
 
-      // Single execution path — force only controls cache-read skipping above
       const finalData = await populateAnalysis();
 
       if (

@@ -69,6 +69,7 @@ function makeAIResponse(body: unknown, status = 200) {
     text: () => Promise.resolve(JSON.stringify(body)),
     json: () => Promise.resolve({
       choices: [{ message: { content: JSON.stringify(body) } }],
+      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
     }),
   } as unknown as Response);
 }
@@ -81,17 +82,19 @@ beforeEach(() => {
 
 describe("getAIAnalysis", () => {
   it("returns a validated AIAnalysis for a well-formed AI response", async () => {
-    const result = await getAIAnalysis(MINIMAL_PROFILE, "test-token");
-    expect(result.score).toBe(75);
-    expect(result.segments.roast).toContain("poet");
-    expect(result.developer_type).toBe("Full-Stack Developer");
+    const { analysis, usage } = await getAIAnalysis(MINIMAL_PROFILE);
+    expect(analysis.score).toBe(75);
+    expect(analysis.segments.roast).toContain("poet");
+    expect(analysis.developer_type).toBe("Full-Stack Developer");
+    expect(usage.input_tokens).toBe(100);
+    expect(usage.output_tokens).toBe(50);
   });
 
   it("returns default developer_type when field is missing from AI response", async () => {
     const withoutDevType = { ...VALID_AI_RESPONSE, developer_type: undefined };
     mockFetch.mockImplementation(() => makeAIResponse(withoutDevType));
-    const result = await getAIAnalysis(MINIMAL_PROFILE, "test-token");
-    expect(result.developer_type).toBe("Developer"); // default applied
+    const { analysis } = await getAIAnalysis(MINIMAL_PROFILE);
+    expect(analysis.developer_type).toBe("Developer"); // default applied
   });
 
   it("throws CORRUPT_INTELLIGENCE when AI response content is malformed JSON", async () => {
@@ -105,7 +108,7 @@ describe("getAIAnalysis", () => {
           }),
       } as unknown as Response),
     );
-    await expect(getAIAnalysis(MINIMAL_PROFILE, "test-token")).rejects.toThrow(
+    await expect(getAIAnalysis(MINIMAL_PROFILE)).rejects.toThrow(
       "CORRUPT_INTELLIGENCE",
     );
   });
@@ -119,7 +122,7 @@ describe("getAIAnalysis", () => {
           Promise.resolve({ choices: [{ message: { content: "" } }] }),
       } as unknown as Response),
     );
-    await expect(getAIAnalysis(MINIMAL_PROFILE, "test-token")).rejects.toThrow(
+    await expect(getAIAnalysis(MINIMAL_PROFILE)).rejects.toThrow(
       "CORRUPT_INTELLIGENCE",
     );
   });
@@ -133,7 +136,7 @@ describe("getAIAnalysis", () => {
         text: () => Promise.resolve("rate limited"),
       } as unknown as Response),
     );
-    const promise = getAIAnalysis(MINIMAL_PROFILE, "test-token");
+    const promise = getAIAnalysis(MINIMAL_PROFILE);
     promise.catch(() => {});
     await vi.runAllTimersAsync();
     await expect(promise).rejects.toThrow();

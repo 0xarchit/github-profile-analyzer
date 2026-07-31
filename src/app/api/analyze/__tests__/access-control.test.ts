@@ -29,6 +29,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/redis", () => ({
   getCachedData: vi.fn(),
   setCachedData: vi.fn(),
+  deleteCachedData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -37,6 +38,7 @@ vi.mock("@/lib/db", () => ({
   getScanById: vi.fn(),
   getUserByGithubId: vi.fn(),
   getLatestSelfScan: vi.fn(),
+  insertAnalytics: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/telegram-alert", () => ({
@@ -65,7 +67,6 @@ const createMockUser = (overrides: Partial<User> = {}): User => ({
 });
 
 type ProfileSummaryResult = Awaited<ReturnType<typeof getProfileSummary>>;
-type AIAnalysisResult = Awaited<ReturnType<typeof getAIAnalysis>>;
 
 const createMockProfileSummary = (overrides: Partial<ProfileSummaryResult> = {}): ProfileSummaryResult => ({
   username: "targetuser",
@@ -98,7 +99,16 @@ const createMockProfileSummary = (overrides: Partial<ProfileSummaryResult> = {})
   ...overrides,
 });
 
-const createMockAIAnalysis = (overrides: Partial<AIAnalysisResult> = {}): AIAnalysisResult => ({
+const MOCK_USAGE = {
+  input_tokens: 100,
+  output_tokens: 50,
+  total_tokens: 150,
+  duration_ms: 1200,
+  model: "test-model",
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const createMockAIAnalysis = (overrides: Record<string, unknown> = {}) => ({
   score: 85,
   developer_type: "Backend Engineer",
   segments: {
@@ -147,7 +157,7 @@ describe("analyze route access-control & routing logic", () => {
     vi.mocked(getUserByUsername).mockResolvedValue(mockUser);
 
     vi.mocked(getProfileSummary).mockResolvedValue(createMockProfileSummary({ username: "targetuser" }));
-    vi.mocked(getAIAnalysis).mockResolvedValue(createMockAIAnalysis({ score: 85 }));
+    vi.mocked(getAIAnalysis).mockResolvedValue({ analysis: createMockAIAnalysis({ score: 85 }), usage: MOCK_USAGE } as never);
 
     const req = new NextRequest("http://localhost/api/analyze?username=targetuser&force=true");
     const res = await GET(req);
@@ -244,7 +254,7 @@ describe("analyze route access-control & routing logic", () => {
     vi.mocked(checkStarStatus).mockResolvedValue(true);
 
     vi.mocked(getProfileSummary).mockResolvedValue(createMockProfileSummary({ username: "targetuser" }));
-    vi.mocked(getAIAnalysis).mockResolvedValue(createMockAIAnalysis({ score: 92, developer_type: "Frontend Specialist" }));
+    vi.mocked(getAIAnalysis).mockResolvedValue({ analysis: createMockAIAnalysis({ score: 92, developer_type: "Frontend Specialist" }), usage: MOCK_USAGE } as never);
 
     const req = new NextRequest("http://localhost/api/analyze?username=targetuser");
     const res = await GET(req);
