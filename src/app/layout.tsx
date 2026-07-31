@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Outfit, Syne } from "next/font/google";
 import "./globals.css";
 
+import { MaintenancePage } from "@/components/MaintenancePage";
+
 const bricolage = Bricolage_Grotesque({
   variable: "--font-bricolage",
   subsets: ["latin"],
@@ -50,12 +52,43 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isMaintenanceMode =
+    process.env.MODE === "MAINT" || process.env.NEXT_PUBLIC_MODE === "MAINT";
+
+  const maintTitle =
+    process.env.MAINT_TITLE || process.env.NEXT_PUBLIC_MAINT_TITLE;
+  const maintDesc =
+    process.env.MAINT_DESC || process.env.NEXT_PUBLIC_MAINT_DESC;
+
+  if (isMaintenanceMode) {
+    if (!maintTitle) {
+      console.warn(
+        "[MAINTENANCE MODE WARNING] Mandatory environment variable 'MAINT_TITLE' is missing."
+      );
+    }
+    if (!maintDesc) {
+      console.warn(
+        "[MAINTENANCE MODE WARNING] Mandatory environment variable 'MAINT_DESC' is missing."
+      );
+    }
+  }
+
   return (
     <html lang="en" className="h-full antialiased">
       <body
         className={`${bricolage.variable} ${outfit.variable} ${syne.variable} font-body bg-neo-bg text-black min-h-full flex flex-col`}
       >
-        {children}
+        {isMaintenanceMode ? (
+          <MaintenancePage
+            title={maintTitle || "SYSTEM UNDER MAINTENANCE"}
+            desc={
+              maintDesc ||
+              "System is under scheduled maintenance. We will be back online shortly."
+            }
+          />
+        ) : (
+          children
+        )}
       </body>
     </html>
   );

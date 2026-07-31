@@ -224,6 +224,22 @@
     outline-offset: 2px;
     box-shadow: 0 0 0 4px var(--color-neo-yellow);
   }
+
+  .maintenance-html-content a {
+    color: #ec4899;
+    font-weight: 800;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .maintenance-html-content a:hover {
+    background-color: #facc15;
+    color: #000000;
+    padding: 2px 6px;
+    box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
