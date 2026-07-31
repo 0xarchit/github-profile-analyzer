@@ -8,6 +8,21 @@ interface MaintenancePageProps {
   desc: string;
 }
 
+function sanitizeHtmlDesc(rawDesc: string): string {
+  if (!rawDesc) return "";
+  // Clean up any escaped quotes or extra quote entities inside href attributes
+  const unescaped = rawDesc
+    .replace(/\\"/g, '"')
+    .replace(/%22/g, '"')
+    .replace(/&quot;/g, '"');
+
+  // Ensure href="http..." or href="https..." doesn't retain leading quotes
+  return unescaped.replace(
+    /href=["']?\s*["']?(https?:\/\/[^"'\s>]+)["']?\s*["']?/gi,
+    'href="$1" target="_blank" rel="noopener noreferrer"'
+  );
+}
+
 export function MaintenancePage({ title, desc }: MaintenancePageProps) {
   const [hasStarred, setHasStarred] = useState(false);
   const [repoStars, setRepoStars] = useState<number | null>(null);
@@ -39,6 +54,8 @@ export function MaintenancePage({ title, desc }: MaintenancePageProps) {
     void fetchStars();
     return () => controller.abort();
   }, []);
+
+  const cleanDesc = sanitizeHtmlDesc(desc);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-neo-bg text-black relative overflow-hidden">
@@ -79,7 +96,7 @@ export function MaintenancePage({ title, desc }: MaintenancePageProps) {
             {/* Description rendered with HTML support */}
             <div
               className="maintenance-html-content text-sm sm:text-lg font-body text-black/80 max-w-xl mx-auto leading-relaxed pt-2"
-              dangerouslySetInnerHTML={{ __html: desc }}
+              dangerouslySetInnerHTML={{ __html: cleanDesc }}
             />
           </div>
 
