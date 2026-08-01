@@ -13,6 +13,7 @@
 
 import { getCachedData, setCachedData } from "@/lib/redis";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 import {
   getFallbackToken,
   fetchGitHubGraphQL,
@@ -81,13 +82,13 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown_error";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getD1Binding(): any {
   if (process.env.DB) return process.env.DB;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getRequestContext } = require("@cloudflare/next-on-pages");
     const ctx = getRequestContext();
-    return ctx?.env?.DB ?? null;
+    const env = ctx?.env as { DB?: unknown } | undefined;
+    return env?.DB ?? null;
   } catch {
     return null;
   }

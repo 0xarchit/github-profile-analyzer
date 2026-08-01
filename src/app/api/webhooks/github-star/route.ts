@@ -5,11 +5,13 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getD1Binding(): any {
   if (process.env.DB) return process.env.DB;
   try {
     const ctx = getRequestContext();
-    return ctx?.env?.DB ?? null;
+    const env = ctx?.env as { DB?: unknown } | undefined;
+    return env?.DB ?? null;
   } catch {
     return null;
   }
