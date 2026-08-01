@@ -337,21 +337,33 @@ export async function GET(request: NextRequest) {
         await setCachedData(cacheKey, finalData);
         console.log("[ANALYZE] Cache set successfully");
 
-        // Post-analysis analytics insert & cache invalidation (awaited inline for next-on-pages compatibility)
-        try {
-          await insertAnalytics({
-            username,
-            model: usage.model,
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            total_tokens: usage.total_tokens,
-            duration_ms: usage.duration_ms,
-            success: true,
-          });
-          await deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
-        } catch (analyticsErr) {
-          console.error("[ANALYZE] Analytics insertion failed:", analyticsErr);
-        }
+        // Fire-and-forget non-blocking background analytics with bounded 2000ms timeout
+        const logAnalyticsWithTimeout = async () => {
+          const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Analytics operation timed out")), 2000),
+          );
+          try {
+            await Promise.race([
+              (async () => {
+                await insertAnalytics({
+                  username,
+                  model: usage.model,
+                  input_tokens: usage.input_tokens,
+                  output_tokens: usage.output_tokens,
+                  total_tokens: usage.total_tokens,
+                  duration_ms: usage.duration_ms,
+                  success: true,
+                });
+                await deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
+              })(),
+              timeout,
+            ]);
+          } catch (analyticsErr) {
+            console.error("[ANALYZE] Analytics task skipped/failed:", analyticsErr);
+          }
+        };
+
+        void logAnalyticsWithTimeout();
 
         return finalData;
       };
