@@ -134,6 +134,7 @@ async function callAIWithTimeout(
           { role: "user", content: JSON.stringify(minified) },
         ],
         response_format: { type: "json_object" },
+        max_tokens: 1500,
       }),
     });
   } finally {
@@ -298,7 +299,20 @@ export async function getAIAnalysis(
 
   try {
     console.log("[AI_ANALYSIS] Parsing JSON content");
-    const rawAnalysis = JSON.parse(content);
+    // Strip markdown code fences (e.g. ```json ... ```) or preambles if present
+    let cleanedContent = content.trim();
+    if (cleanedContent.startsWith("```")) {
+      cleanedContent = cleanedContent
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "");
+    }
+    const firstBrace = cleanedContent.indexOf("{");
+    const lastBrace = cleanedContent.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1);
+    }
+
+    const rawAnalysis = JSON.parse(cleanedContent);
     console.log("[AI_ANALYSIS] JSON parsed successfully", {
       score: rawAnalysis.score,
       hasSegments: !!rawAnalysis.segments,

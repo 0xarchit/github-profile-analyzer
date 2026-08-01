@@ -126,6 +126,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (msg.includes("CORRUPT_INTELLIGENCE")) {
+      return NextResponse.json(
+        {
+          error: "CORRUPT_INTELLIGENCE",
+          message:
+            "The AI service response failed structural JSON validation protocols.",
+        },
+        { status: 502 },
+      );
+    }
+
     if (
       msg.includes("rate limit") ||
       msg.includes("403") ||
