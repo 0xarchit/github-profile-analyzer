@@ -43,37 +43,77 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
   const [isOwner, setIsOwner] = useState(false);
   const [isVerifyingAgain, setIsVerifyingAgain] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<{
+    step?: string;
+    message?: string;
+    progress?: number;
+  }>({});
 
   const fetchData = useCallback(
-    async (force = false, nosave = false) => {
+    async (force = false) => {
       try {
         setIsRefreshing(force);
-        const baseUrl = `/api/analyze?username=${username}`;
-        const res = await fetch(
-          `${baseUrl}${force ? "&force=true" : ""}${nosave ? "&nosave=true" : ""}`,
-        );
-        const result = await res.json();
-
-        if (res.status === 403 && result.error === "Star required") {
-          setShowStarModal(true);
-          return;
-        }
-
-        if (!res.ok) {
-          setError(result.error || "Diagnostic matrix failed");
-          return;
-        }
-
-        setData(result);
         setError(null);
 
-        const confetti = (await import("canvas-confetti")).default;
-        confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#FFE600", "#FF00E5", "#00F0FF", "#000000"],
+        const streamUrl = `/api/analyze/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`;
+        const eventSource = new EventSource(streamUrl);
+
+        eventSource.addEventListener("status", (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            const stepProgressMap: Record<string, number> = {
+              SESSION_CHECK: 15,
+              STAR_GATE: 30,
+              CACHE_CHECK: 45,
+              CACHE_HIT: 95,
+              GITHUB_FETCH: 60,
+              NEURAL_ANALYSIS: 80,
+              CACHE_WRITE: 92,
+              COMPLETE: 100,
+            };
+            setStreamStatus({
+              step: payload.step,
+              message: payload.message,
+              progress: stepProgressMap[payload.step] || 50,
+            });
+          } catch {}
         });
+
+        eventSource.addEventListener("complete", async (e) => {
+          try {
+            const result = JSON.parse(e.data);
+            setData(result);
+            setError(null);
+            eventSource.close();
+
+            const confetti = (await import("canvas-confetti")).default;
+            confetti({
+              particleCount: 150,
+              spread: 70,
+              origin: { y: 0.6 },
+              colors: ["#FFE600", "#FF00E5", "#00F0FF", "#000000"],
+            });
+          } catch {}
+        });
+
+        eventSource.addEventListener("error", (e) => {
+          try {
+            const payload = JSON.parse((e as MessageEvent).data || "{}");
+            if (payload.error === "Star required") {
+              setShowStarModal(true);
+            } else {
+              setError(payload.error || "Diagnostic matrix failed");
+            }
+          } catch {
+            setError("DIAGNOSTIC_FAILURE");
+          } finally {
+            eventSource.close();
+          }
+        });
+
+        eventSource.onerror = () => {
+          eventSource.close();
+        };
       } catch {
         setError("NETWORK_FAILURE");
       } finally {
@@ -215,7 +255,14 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
       </div>
     );
 
-  if (!data) return <ScanningInterface />;
+  if (!data)
+    return (
+      <ScanningInterface
+        currentStep={streamStatus.step}
+        statusMessage={streamStatus.message}
+        progress={streamStatus.progress}
+      />
+    );
 
   return (
     <main className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-8 bg-neo-bg space-y-6 sm:space-y-8 md:space-y-12 lg:space-y-16 w-full max-w-full lg:max-w-7xl mx-auto relative overflow-x-clip protocol-noise animate-in fade-in">
@@ -231,7 +278,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
         {(data.isLocked || data.isHistorical) && (
           <button
-            onClick={() => fetchData(true, true)}
+            onClick={() => fetchData(true)}
             disabled={isRefreshing}
             className="neo-button bg-neo-yellow text-[10px] md:text-sm flex items-center justify-center gap-2 group shadow-neo-active hover:shadow-neo transition-all disabled:opacity-50"
           >
@@ -242,7 +289,7 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
         {(isOwner || (!data.isLocked && !data.isHistorical)) && (
           <button
-            onClick={() => fetchData(true, false)}
+            onClick={() => fetchData(true)}
             disabled={isRefreshing}
             className="neo-button bg-neo-green text-[10px] md:text-sm flex items-center justify-center gap-2 group shadow-neo-active hover:shadow-neo transition-all disabled:opacity-50"
           >

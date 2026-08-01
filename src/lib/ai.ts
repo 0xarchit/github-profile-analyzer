@@ -97,7 +97,7 @@ const SYSTEM_PROMPT =
   `,"improvement_areas":["<area>"],"diagnostics":["<observation>"]` +
   `,"project_ideas":{"1":{"title":"...","description":"...","tech stack":["..."]},"2":{"title":"...","description":"...","tech stack":["..."]},"3":{"title":"...","description":"...","tech stack":["..."]}}` +
   `,"tag":{"tag_name":"...","description":"..."},"developer_type":"<Professional Title>"}` +
-  ` IMPORTANT: developer_type must be a direct child of root. Generate exactly 3 unique project_ideas. No empty fields.`;
+  ` IMPORTANT: Return PURE JSON ONLY starting directly with '{'. Do not include thinking, reasoning, or preamble text. developer_type must be a direct child of root. Generate exactly 3 unique project_ideas. Keep text concise.`;
 
 async function callAIWithTimeout(
   systemPrompt: string,
@@ -134,7 +134,7 @@ async function callAIWithTimeout(
           { role: "user", content: JSON.stringify(minified) },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 1500,
+        max_tokens: 4000,
       }),
     });
   } finally {
@@ -312,7 +312,36 @@ export async function getAIAnalysis(
       cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1);
     }
 
-    const rawAnalysis = JSON.parse(cleanedContent);
+    let rawAnalysis;
+    try {
+      rawAnalysis = JSON.parse(cleanedContent);
+    } catch {
+      // If output was truncated at token limit, attempt basic structural JSON repair
+      console.warn("[AI_ANALYSIS] Standard JSON.parse failed, attempting JSON auto-repair...");
+      let repaired = cleanedContent;
+      // Close unclosed strings
+      const openQuotes = (repaired.match(/"/g) || []).length;
+      if (openQuotes % 2 !== 0) {
+        repaired += '"';
+      }
+      // Count unclosed braces/brackets
+      let openBraces = 0;
+      let openBrackets = 0;
+      let inString = false;
+      for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+        if (char === '"' && repaired[i - 1] !== "\\") inString = !inString;
+        if (!inString) {
+          if (char === "{") openBraces++;
+          else if (char === "}") openBraces--;
+          else if (char === "[") openBrackets++;
+          else if (char === "]") openBrackets--;
+        }
+      }
+      while (openBrackets > 0) { repaired += "]"; openBrackets--; }
+      while (openBraces > 0) { repaired += "}"; openBraces--; }
+      rawAnalysis = JSON.parse(repaired);
+    }
     console.log("[AI_ANALYSIS] JSON parsed successfully", {
       score: rawAnalysis.score,
       hasSegments: !!rawAnalysis.segments,
