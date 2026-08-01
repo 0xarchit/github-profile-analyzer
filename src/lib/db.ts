@@ -382,7 +382,7 @@ export interface AnalyticsSummary {
  */
 export async function insertAnalytics(
   row: Omit<AnalyticsRow, "id" | "created_at">,
-): Promise<void> {
+): Promise<boolean> {
   const { username, model, input_tokens, output_tokens, total_tokens, duration_ms, success } = row;
   try {
     await sql`
@@ -390,12 +390,13 @@ export async function insertAnalytics(
       VALUES (${username}, ${model}, ${input_tokens}, ${output_tokens}, ${total_tokens}, ${duration_ms ?? null}, ${success})
     `;
     console.log("[DB] insertAnalytics success", { username, total_tokens });
+    return true;
   } catch (err) {
     console.error("[DB] insertAnalytics failed — non-fatal", {
       error: err instanceof Error ? err.message : String(err),
       username,
     });
-    // Intentionally swallowed — analytics must never break a user response
+    return false;
   }
 }
 
