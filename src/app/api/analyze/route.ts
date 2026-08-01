@@ -194,18 +194,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const cacheKey = `analysed:${username.toLowerCase()}`;
 
-    // 1. Fast Cache Check: If cached analysis exists and !force, return immediately
-    if (!force) {
-      console.log("[ANALYZE] Checking cache", { cacheKey });
-      const cachedResult = await getCachedData(cacheKey);
-      if (cachedResult) {
-        console.log("[ANALYZE] Cache hit - returning cached result");
-        return NextResponse.json(cachedResult);
-      }
-      console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
-    }
 
     // ── Star-gate enforcement ──────────────────────────────────────────────
     // All users must have starred the repo to view any profile.
@@ -304,6 +293,19 @@ export async function GET(request: NextRequest) {
           { status: 403 },
         );
       }
+    }
+
+    const cacheKey = `analysed:${username.toLowerCase()}`;
+
+    // Read from cache only after star-gate and visibility authorization pass
+    if (!force) {
+      console.log("[ANALYZE] Checking cache", { cacheKey });
+      const cachedResult = await getCachedData(cacheKey);
+      if (cachedResult) {
+        console.log("[ANALYZE] Cache hit - returning cached result");
+        return NextResponse.json(cachedResult);
+      }
+      console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
     }
 
     try {
