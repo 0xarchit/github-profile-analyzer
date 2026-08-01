@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Zap, Users, Hash, ArrowUp, ArrowDown, Clock, Activity, BarChart3 } from "lucide-react";
 import { Header } from "@/components/Header";
+import { getAnalyticsSummary } from "@/lib/db";
 import type { AnalyticsSummary } from "@/lib/db";
+import { getCachedData, setCachedData } from "@/lib/redis";
 
 export const metadata: Metadata = {
   title: "System Analytics | GitHub Profile Analyzer",
@@ -9,20 +11,26 @@ export const metadata: Metadata = {
     "Live protocol telemetry — public token usage and request analytics for GitHub Profile Analyzer.",
 };
 
-// Revalidate every 15 minutes (matches Redis TTL)
+// Allow Next.js to revalidate every 15 minutes at the page level too
 export const revalidate = 900;
+
+const ANALYTICS_CACHE_KEY = "analytics:summary";
 
 async function fetchAnalyticsSummary(): Promise<AnalyticsSummary | null> {
   try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-      "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/analytics`, {
-      next: { revalidate: 900 },
-    });
-    if (!res.ok) return null;
-    return res.json() as Promise<AnalyticsSummary>;
-  } catch {
+    // 1. Try Redis cache first
+    const cached = await getCachedData<AnalyticsSummary>(ANALYTICS_CACHE_KEY);
+    if (cached) return cached;
+
+    // 2. Direct DB call — no HTTP loopback
+    const summary = await getAnalyticsSummary();
+
+    // 3. Populate cache for subsequent API hits
+    await setCachedData(ANALYTICS_CACHE_KEY, summary, 900);
+
+    return summary;
+  } catch (err) {
+    console.error("[ANALYTICS_PAGE] Failed to fetch summary", err);
     return null;
   }
 }
