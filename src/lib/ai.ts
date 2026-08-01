@@ -120,6 +120,96 @@ async function callAIWithTimeout(
   }, AI_TIMEOUT_MS);
 
   try {
+    const schemaPayload = {
+      model: LLM_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify(minified) },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "github_analysis_result",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              score: { type: "integer" },
+              segments: {
+                type: "object",
+                properties: {
+                  roast: { type: "string" },
+                  technical_analysis: { type: "string" },
+                  strategic_advice: { type: "string" },
+                },
+                required: ["roast", "technical_analysis", "strategic_advice"],
+                additionalProperties: false,
+              },
+              improvement_areas: {
+                type: "array",
+                items: { type: "string" },
+              },
+              diagnostics: {
+                type: "array",
+                items: { type: "string" },
+              },
+              project_ideas: {
+                type: "object",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    "tech stack": {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  required: ["title", "description", "tech stack"],
+                  additionalProperties: false,
+                },
+              },
+              tag: {
+                type: "object",
+                properties: {
+                  tag_name: { type: "string" },
+                  description: { type: "string" },
+                },
+                required: ["tag_name", "description"],
+                additionalProperties: false,
+              },
+              developer_type: { type: "string" },
+            },
+            required: [
+              "score",
+              "segments",
+              "improvement_areas",
+              "diagnostics",
+              "project_ideas",
+              "tag",
+              "developer_type",
+            ],
+            additionalProperties: false,
+          },
+        },
+      },
+      max_tokens: 4000,
+    };
+
+    const res = await fetch(LLM_ENDPOINT, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${LLM_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(schemaPayload),
+    });
+
+    if (res.ok || res.status !== 400) return res;
+
+    // Fallback for endpoints that do not support json_schema
+    console.warn("[AI_ANALYSIS] json_schema rejected by endpoint, falling back to json_object...");
     return await fetch(LLM_ENDPOINT, {
       method: "POST",
       signal: controller.signal,
