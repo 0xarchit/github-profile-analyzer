@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse, NextRequest, after } from "next/server";
 import { UsernameSchema } from "@/lib/validation";
 import type { ValidatedAnalysisResult } from "@/lib/validation";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
       // Authenticated viewer has starred, OR target user has starred
       hasTargetStarred =
         (await checkStarStatus(session.username, scannerToken)) ||
-        (await checkStarStatus(username, scannerToken));
+        (await checkStarStatus(username));
     } else {
       // Unauthenticated (guest) user: check if target profile has starred
       hasTargetStarred = await checkStarStatus(username);
@@ -326,19 +326,23 @@ export async function GET(request: NextRequest) {
           usage,
         });
 
-        // Fire-and-forget analytics insert — never blocks or fails the response
-        void insertAnalytics({
-          username,
-          model: usage.model,
-          input_tokens: usage.input_tokens,
-          output_tokens: usage.output_tokens,
-          total_tokens: usage.total_tokens,
-          duration_ms: usage.duration_ms,
-          success: true,
+        // Post-analysis analytics insert & cache invalidation using Next.js after()
+        after(async () => {
+          try {
+            await insertAnalytics({
+              username,
+              model: usage.model,
+              input_tokens: usage.input_tokens,
+              output_tokens: usage.output_tokens,
+              total_tokens: usage.total_tokens,
+              duration_ms: usage.duration_ms,
+              success: true,
+            });
+            await deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
+          } catch (err) {
+            console.error("[ANALYZE] Post-analysis task failed:", err);
+          }
         });
-
-        // Invalidate the analytics summary cache so /analytics reflects new data
-        void deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
 
         const finalData: AnalyzedPayload = {
           ...profile,

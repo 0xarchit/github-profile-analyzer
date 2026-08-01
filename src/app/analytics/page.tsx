@@ -13,9 +13,6 @@ export const metadata: Metadata = {
 
 export const runtime = "edge";
 
-// Allow Next.js to revalidate every 15 minutes at the page level too
-export const revalidate = 900;
-
 const ANALYTICS_CACHE_KEY = "analytics:summary";
 
 async function fetchAnalyticsSummary(): Promise<AnalyticsSummary | null> {
