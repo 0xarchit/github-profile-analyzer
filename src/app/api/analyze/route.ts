@@ -194,6 +194,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const cacheKey = `analysed:${username.toLowerCase()}`;
+
+    // 1. Fast Cache Check: If cached analysis exists and !force, return immediately
+    if (!force) {
+      console.log("[ANALYZE] Checking cache", { cacheKey });
+      const cachedResult = await getCachedData(cacheKey);
+      if (cachedResult) {
+        console.log("[ANALYZE] Cache hit - returning cached result");
+        return NextResponse.json(cachedResult);
+      }
+      console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
+    }
+
     // ── Star-gate enforcement ──────────────────────────────────────────────
     // All users must have starred the repo to view any profile.
     // Only exception: the profile owner viewing their own profile.
@@ -293,21 +306,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const cacheKey = `analysed:${username.toLowerCase()}`;
-
     try {
-      // Only read from cache on non-forced requests
-      if (!force) {
-        console.log("[ANALYZE] Checking cache", { cacheKey });
-        const cachedResult = await getCachedData(cacheKey);
-        if (cachedResult) {
-          console.log("[ANALYZE] Cache hit - returning cached result");
-          return NextResponse.json(cachedResult);
-        }
-        console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
-      } else {
-        console.log("[ANALYZE] Force refresh requested - skipping cache");
-      }
 
       const populateAnalysis = async (): Promise<AnalyzedPayload> => {
         console.log("[ANALYZE] Fetching profile summary", { username });

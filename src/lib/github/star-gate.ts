@@ -111,10 +111,14 @@ async function isStarredInD1(username: string): Promise<boolean> {
 
 async function cacheVerifiedStar(username: string): Promise<void> {
   const normalized = normalizeUsername(username);
+  const userStarKey = `star_verified:${normalized}`;
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
   
   // Save to Cloudflare D1 if available
   await saveStarToD1(normalized);
+
+  // Set fast per-user Redis cache (1 hour TTL)
+  await setCachedData(userStarKey, true, 3600).catch(() => null);
 
   const cached = (await getCachedData<string[]>(cacheKey)) || [];
   if (cached.some((s) => normalizeUsername(s) === normalized)) {
@@ -634,9 +638,16 @@ export async function checkStarStatus(
     starGateLog("check_d1_miss", { username: normalizedUsername });
   }
 
-  // Strategy 2: Redis cache
+  // Strategy 2: Redis cache (per-user fast check + repo stargazer list)
+  const userStarKey = `star_verified:${normalizedUsername}`;
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
   try {
+    const isUserStarCached = await getCachedData<boolean>(userStarKey);
+    if (isUserStarCached) {
+      starGateLog("check_pass_user_cache", { username: normalizedUsername });
+      return true;
+    }
+
     const cachedStargazers = await getCachedData<string[]>(cacheKey);
     if (
       cachedStargazers?.some((u) => normalizeUsername(u) === normalizedUsername)
