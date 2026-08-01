@@ -206,10 +206,14 @@ export async function GET(request: NextRequest) {
       // Owner is always allowed to view their own profile
       hasTargetStarred = true;
     } else if (session?.username) {
-      // Authenticated (non-owner) users must have starred the repo
-      hasTargetStarred = await checkStarStatus(session.username, scannerToken);
+      // Authenticated viewer has starred, OR target user has starred
+      hasTargetStarred =
+        (await checkStarStatus(session.username, scannerToken)) ||
+        (await checkStarStatus(username, scannerToken));
+    } else {
+      // Unauthenticated (guest) user: check if target profile has starred
+      hasTargetStarred = await checkStarStatus(username);
     }
-    // Unauthenticated (anonymous) users fall through with hasTargetStarred = false
     console.log("[ANALYZE] Star status resolved", { hasTargetStarred });
 
     if (!hasTargetStarred) {
