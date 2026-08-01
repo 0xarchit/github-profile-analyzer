@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { normalizeUsername, TARGET_REPO } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
+
+function getD1Binding(): any {
+  if (process.env.DB) return process.env.DB;
+  try {
+    const ctx = getRequestContext();
+    return ctx?.env?.DB ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
 
@@ -104,10 +115,11 @@ export async function POST(request: Request) {
 
     const normalized = normalizeUsername(sender);
 
-    if (process.env.DB) {
+    const db = getD1Binding();
+    if (db) {
       try {
         if (typedPayload.action === "created") {
-          await process.env.DB.prepare(
+          await db.prepare(
             "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
           )
             .bind(normalized)
@@ -121,7 +133,7 @@ export async function POST(request: Request) {
             context: { username: normalized },
           });
         } else if (typedPayload.action === "deleted") {
-          await process.env.DB.prepare(
+          await db.prepare(
             "DELETE FROM stargazers WHERE username = ?"
           )
             .bind(normalized)

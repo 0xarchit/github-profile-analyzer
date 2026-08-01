@@ -81,10 +81,23 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown_error";
 }
 
-async function saveStarToD1(username: string): Promise<void> {
-  if (!process.env.DB) return;
+function getD1Binding(): any {
+  if (process.env.DB) return process.env.DB;
   try {
-    await process.env.DB.prepare(
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getRequestContext } = require("@cloudflare/next-on-pages");
+    const ctx = getRequestContext();
+    return ctx?.env?.DB ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveStarToD1(username: string): Promise<void> {
+  const db = getD1Binding();
+  if (!db) return;
+  try {
+    await db.prepare(
       "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
     )
       .bind(username)
@@ -95,9 +108,10 @@ async function saveStarToD1(username: string): Promise<void> {
 }
 
 async function isStarredInD1(username: string): Promise<boolean> {
-  if (!process.env.DB) return false;
+  const db = getD1Binding();
+  if (!db) return false;
   try {
-    const res = await process.env.DB.prepare(
+    const res = await db.prepare(
       "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
     )
       .bind(username)
@@ -629,14 +643,12 @@ export async function checkStarStatus(
   }
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
-  if (process.env.DB) {
-    const isStarred = await isStarredInD1(normalizedUsername);
-    if (isStarred) {
-      starGateLog("check_pass_d1", { username: normalizedUsername });
-      return true;
-    }
-    starGateLog("check_d1_miss", { username: normalizedUsername });
+  const isStarred = await isStarredInD1(normalizedUsername);
+  if (isStarred) {
+    starGateLog("check_pass_d1", { username: normalizedUsername });
+    return true;
   }
+  starGateLog("check_d1_miss", { username: normalizedUsername });
 
   // Strategy 2: Redis cache (per-user fast check + repo stargazer list)
   const userStarKey = `star_verified:${normalizedUsername}`;
