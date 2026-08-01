@@ -21,13 +21,13 @@ const redis = isRatelimitConfigured
   : null;
 
 const ratelimit = redis
-	? new Ratelimit({
-		redis,
-		limiter: Ratelimit.slidingWindow(5, "15 m"),
-		analytics: false,
-		prefix: "gitscore:ratelimit",
-	})
-	: null;
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "15 m"),
+      analytics: false,
+      prefix: "gitscore:ratelimit",
+    })
+  : null;
 
 function applySecurityHeaders(
   response: Response | NextResponse,
@@ -45,9 +45,7 @@ function applySecurityHeaders(
     "camera=(), microphone=(), geolocation=()",
   );
   const cspPolicy =
-    process.env.NODE_ENV === "production"
-      ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://va.vercel-scripts.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' data: blob: https://api.github.com https://github.com; font-src 'self' data:;"
-      : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://va.vercel-scripts.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' data: blob: https://api.github.com https://github.com; font-src 'self' data:;";
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://va.vercel-scripts.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' data: blob: https://api.github.com https://github.com; font-src 'self' data:;";
   response.headers.set("Content-Security-Policy", cspPolicy);
   return response;
 }
@@ -88,6 +86,8 @@ export async function middleware(request: NextRequest) {
 
   const isApiRoute = pathname.startsWith("/api/");
   const isAuthRoute = pathname.startsWith("/api/auth/");
+  const isWebhookRoute = pathname.startsWith("/api/webhooks/");
+  const isVerifyGuestRoute = pathname === "/api/auth/verify-guest";
   const isSettingsRoute = pathname === "/settings";
 
   const response: NextResponse = NextResponse.next();
@@ -118,7 +118,13 @@ export async function middleware(request: NextRequest) {
         );
       }
 
-      if (isApiRoute && !isAuthRoute) {
+      // Webhooks handle HMAC verification themselves — bypass rate limiter
+      if (isWebhookRoute) {
+        return applySecurityHeaders(response);
+      }
+
+      // Apply rate limiting to guest API requests AND verify-guest route
+      if ((isApiRoute && !isAuthRoute) || isVerifyGuestRoute) {
         if (!ratelimit) {
           if (process.env.NODE_ENV === "production") {
             return applySecurityHeaders(
@@ -143,7 +149,8 @@ export async function middleware(request: NextRequest) {
           ? forwarded.split(",")[0]?.trim() || realIp || "127.0.0.1"
           : realIp || "127.0.0.1";
 
-        const { success } = await ratelimit.limit(ip);
+        const ipKey = isVerifyGuestRoute ? `verify-guest:${ip}` : ip;
+        const { success } = await ratelimit.limit(ipKey);
 
         if (!success) {
           return applySecurityHeaders(

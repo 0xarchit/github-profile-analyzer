@@ -13,6 +13,7 @@
 
 import { getCachedData, setCachedData } from "@/lib/redis";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 import {
   getFallbackToken,
   fetchGitHubGraphQL,
@@ -28,8 +29,8 @@ import {
 
 const STAR_PAGE_SIZE = 100;
 const STAR_QUICK_LIMIT = 6;
-const STAR_DEEP_LIMIT = 120;
-const STAR_REST_LIMIT = 250;
+const STAR_DEEP_LIMIT = 30; // Bounded to 30 pages to respect Workers subrequest limits
+const STAR_REST_LIMIT = 30;
 const STAR_CACHE_TTL = 900;
 const STAR_GATE_DEBUG = process.env.STAR_GATE_DEBUG === "1";
 
@@ -81,10 +82,23 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown_error";
 }
 
-async function saveStarToD1(username: string): Promise<void> {
-  if (!process.env.DB) return;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getD1Binding(): any {
+  if (process.env.DB) return process.env.DB;
   try {
-    await process.env.DB.prepare(
+    const ctx = getRequestContext();
+    const env = ctx?.env as { DB?: unknown } | undefined;
+    return env?.DB ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveStarToD1(username: string): Promise<void> {
+  const db = getD1Binding();
+  if (!db) return;
+  try {
+    await db.prepare(
       "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
     )
       .bind(username)
@@ -95,9 +109,10 @@ async function saveStarToD1(username: string): Promise<void> {
 }
 
 async function isStarredInD1(username: string): Promise<boolean> {
-  if (!process.env.DB) return false;
+  const db = getD1Binding();
+  if (!db) return false;
   try {
-    const res = await process.env.DB.prepare(
+    const res = await db.prepare(
       "SELECT 1 FROM stargazers WHERE username = ? LIMIT 1"
     )
       .bind(username)
@@ -111,10 +126,14 @@ async function isStarredInD1(username: string): Promise<boolean> {
 
 async function cacheVerifiedStar(username: string): Promise<void> {
   const normalized = normalizeUsername(username);
+  const userStarKey = `star_verified:${normalized}`;
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
   
   // Save to Cloudflare D1 if available
   await saveStarToD1(normalized);
+
+  // Set fast per-user Redis cache (1 hour TTL)
+  await setCachedData(userStarKey, true, 3600).catch(() => null);
 
   const cached = (await getCachedData<string[]>(cacheKey)) || [];
   if (cached.some((s) => normalizeUsername(s) === normalized)) {
@@ -625,18 +644,23 @@ export async function checkStarStatus(
   }
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
-  if (process.env.DB) {
-    const isStarred = await isStarredInD1(normalizedUsername);
-    if (isStarred) {
-      starGateLog("check_pass_d1", { username: normalizedUsername });
-      return true;
-    }
-    starGateLog("check_d1_miss", { username: normalizedUsername });
+  const isStarred = await isStarredInD1(normalizedUsername);
+  if (isStarred) {
+    starGateLog("check_pass_d1", { username: normalizedUsername });
+    return true;
   }
+  starGateLog("check_d1_miss", { username: normalizedUsername });
 
-  // Strategy 2: Redis cache
+  // Strategy 2: Redis cache (per-user fast check + repo stargazer list)
+  const userStarKey = `star_verified:${normalizedUsername}`;
   const cacheKey = `repo:stargazers:${TARGET_REPO}`;
   try {
+    const isUserStarCached = await getCachedData<boolean>(userStarKey);
+    if (isUserStarCached) {
+      starGateLog("check_pass_user_cache", { username: normalizedUsername });
+      return true;
+    }
+
     const cachedStargazers = await getCachedData<string[]>(cacheKey);
     if (
       cachedStargazers?.some((u) => normalizeUsername(u) === normalizedUsername)
@@ -687,12 +711,10 @@ export async function verifyAndInjectStar(username: string): Promise<boolean> {
   starGateLog("verify_guest_start", { username: normalizedUsername });
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
-  if (process.env.DB) {
-    const isStarred = await isStarredInD1(normalizedUsername);
-    if (isStarred) {
-      starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
-      return true;
-    }
+  const isStarred = await isStarredInD1(normalizedUsername);
+  if (isStarred) {
+    starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
+    return true;
   }
 
   const isVerified = await executeBidirectionalStarCheck(normalizedUsername);

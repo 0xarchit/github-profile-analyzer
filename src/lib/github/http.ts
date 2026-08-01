@@ -17,15 +17,18 @@ export const GITHUB_TOKENS = (process.env.GITHUB_TOKENS || "")
 
 export const GITHUB_FETCH_TIMEOUT_MS = 10_000;
 
+let tokenIndex = 0;
+
 /**
- * Returns a random token from the GITHUB_TOKENS pool.
+ * Returns a token from the GITHUB_TOKENS pool using round-robin distribution.
  * Throws if the pool is empty (guards against runtime env misconfiguration).
  */
 export function getFallbackToken(): string {
   if (GITHUB_TOKENS.length === 0) {
     throw new Error("GITHUB_TOKENS environment variable is required");
   }
-  const token = GITHUB_TOKENS[Math.floor(Math.random() * GITHUB_TOKENS.length)];
+  const token = GITHUB_TOKENS[tokenIndex % GITHUB_TOKENS.length];
+  tokenIndex = (tokenIndex + 1) % GITHUB_TOKENS.length;
   if (!token) throw new Error("GITHUB_TOKENS environment variable is required");
   return token;
 }

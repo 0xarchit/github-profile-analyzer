@@ -4,7 +4,7 @@ import type { ValidatedAnalysisResult } from "@/lib/validation";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
 import { getAIAnalysis } from "@/lib/ai";
 import { getSession } from "@/lib/auth";
-import { getCachedData, setCachedData } from "@/lib/redis";
+import { getCachedData, setCachedData, deleteCachedData } from "@/lib/redis";
 import { TelegramAlertCollector } from "@/lib/telegram-alert";
 import {
   getUserByUsername,
@@ -12,9 +12,13 @@ import {
   getScanById,
   getUserByGithubId,
   getLatestSelfScan,
+  insertAnalytics,
 } from "@/lib/db";
 
+// Node runtime replaced with Edge runtime for next-on-pages builder compatibility
 export const runtime = "edge";
+
+const ANALYTICS_CACHE_KEY = "analytics:summary";
 
 type AnalyzedPayload = ValidatedAnalysisResult & {
   isStarred: boolean;
@@ -110,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     if (isAbortError) {
       console.error("[ANALYZE] Request timeout/abort detected", {
-        timeout: "15s for AI or 10s for GitHub API",
+        timeout: "45s for AI or 10s for GitHub API",
       });
       return NextResponse.json(
         {
@@ -119,6 +123,17 @@ export async function GET(request: NextRequest) {
             "The analysis operation timed out. GitHub API or AI service may be slow.",
         },
         { status: 504 },
+      );
+    }
+
+    if (msg.includes("CORRUPT_INTELLIGENCE")) {
+      return NextResponse.json(
+        {
+          error: "CORRUPT_INTELLIGENCE",
+          message:
+            "The AI service response failed structural JSON validation protocols.",
+        },
+        { status: 502 },
       );
     }
 
@@ -190,16 +205,27 @@ export async function GET(request: NextRequest) {
       }
     }
 
+
+
+    // ── Star-gate enforcement ──────────────────────────────────────────────
+    // All users must have starred the repo to view any profile.
+    // Only exception: the profile owner viewing their own profile.
     console.log("[ANALYZE] Checking star status", {
       isOwnerOfTarget,
-      username,
+      viewerUsername: session?.username ?? "anonymous",
     });
     let hasTargetStarred = false;
-    if (!isOwnerOfTarget) {
-      const viewerUsername = session?.username || username;
-      hasTargetStarred = await checkStarStatus(viewerUsername, scannerToken);
-    } else {
+    if (isOwnerOfTarget) {
+      // Owner is always allowed to view their own profile
       hasTargetStarred = true;
+    } else if (session?.username) {
+      // Authenticated viewer has starred, OR target user has starred
+      hasTargetStarred =
+        (await checkStarStatus(session.username, scannerToken)) ||
+        (await checkStarStatus(username));
+    } else {
+      // Unauthenticated (guest) user: check if target profile has starred
+      hasTargetStarred = await checkStarStatus(username);
     }
     console.log("[ANALYZE] Star status resolved", { hasTargetStarred });
 
@@ -282,19 +308,18 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = `analysed:${username.toLowerCase()}`;
 
-    try {
-      // Only read from cache on non-forced requests
-      if (!force) {
-        console.log("[ANALYZE] Checking cache", { cacheKey });
-        const cachedResult = await getCachedData(cacheKey);
-        if (cachedResult) {
-          console.log("[ANALYZE] Cache hit - returning cached result");
-          return NextResponse.json(cachedResult);
-        }
-        console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
-      } else {
-        console.log("[ANALYZE] Force refresh requested - skipping cache");
+    // Read from cache only after star-gate and visibility authorization pass
+    if (!force) {
+      console.log("[ANALYZE] Checking cache", { cacheKey });
+      const cachedResult = await getCachedData(cacheKey);
+      if (cachedResult) {
+        console.log("[ANALYZE] Cache hit - returning cached result");
+        return NextResponse.json(cachedResult);
       }
+      console.log("[ANALYZE] Cache miss - proceeding with fresh analysis");
+    }
+
+    try {
 
       const populateAnalysis = async (): Promise<AnalyzedPayload> => {
         console.log("[ANALYZE] Fetching profile summary", { username });
@@ -304,13 +329,13 @@ export async function GET(request: NextRequest) {
         });
 
         console.log("[ANALYZE] Starting AI analysis");
-        const analysis = await getAIAnalysis(
+        const { analysis, usage } = await getAIAnalysis(
           profile,
-          scannerToken,
           alertCollector,
         );
         console.log("[ANALYZE] AI analysis completed", {
           score: analysis.score,
+          usage,
         });
 
         const finalData: AnalyzedPayload = {
@@ -324,10 +349,44 @@ export async function GET(request: NextRequest) {
         await setCachedData(cacheKey, finalData);
         console.log("[ANALYZE] Cache set successfully");
 
+        // Fire-and-forget background analytics with bounded 2000ms timeout
+        const logAnalyticsWithTimeout = async (): Promise<void> => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const inserted = await Promise.race([
+              insertAnalytics({
+                username,
+                model: usage.model,
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+                duration_ms: usage.duration_ms,
+                success: true,
+              }),
+              new Promise<boolean>((_, reject) => {
+                timer = setTimeout(
+                  () => reject(new Error("Analytics operation timed out")),
+                  2000,
+                );
+              }),
+            ]);
+
+            // Only invalidate summary cache if the insert succeeded
+            if (inserted) {
+              await deleteCachedData(ANALYTICS_CACHE_KEY).catch(() => null);
+            }
+          } catch (analyticsErr) {
+            console.error("[ANALYZE] Analytics task skipped/failed:", analyticsErr);
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+        };
+
+        void logAnalyticsWithTimeout();
+
         return finalData;
       };
 
-      // Single execution path — force only controls cache-read skipping above
       const finalData = await populateAnalysis();
 
       if (

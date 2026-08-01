@@ -348,3 +348,104 @@ export async function getLatestSelfScan(
     throw err;
   }
 }
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+export interface AnalyticsRow {
+  id: string;
+  created_at: string;
+  username: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  duration_ms: number | null;
+  success: boolean;
+}
+
+export interface AnalyticsSummary {
+  total_requests: number;
+  total_users: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens_all: number;
+  avg_input_last20: number;
+  avg_output_last20: number;
+  avg_total_last20: number;
+  avg_duration_ms_last20: number;
+  last_updated: string;
+}
+
+/**
+ * Inserts a token usage row into the analytics table.
+ * Designed to be called fire-and-forget — never throws.
+ */
+export async function insertAnalytics(
+  row: Omit<AnalyticsRow, "id" | "created_at">,
+): Promise<boolean> {
+  const { username, model, input_tokens, output_tokens, total_tokens, duration_ms, success } = row;
+  try {
+    await sql`
+      INSERT INTO analytics (username, model, input_tokens, output_tokens, total_tokens, duration_ms, success)
+      VALUES (${username}, ${model}, ${input_tokens}, ${output_tokens}, ${total_tokens}, ${duration_ms ?? null}, ${success})
+    `;
+    console.log("[DB] insertAnalytics success", { username, total_tokens });
+    return true;
+  } catch (err) {
+    console.error("[DB] insertAnalytics failed — non-fatal", {
+      error: err instanceof Error ? err.message : String(err),
+      username,
+    });
+    return false;
+  }
+}
+
+/**
+ * Returns aggregated analytics summary plus averages across the last 20 requests.
+ * Usernames are not exposed to callers — only counts and token metrics.
+ */
+export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+  const [totalsResult, last20Result] = await Promise.all([
+    sql`
+      SELECT
+        COUNT(*)::integer                    AS total_requests,
+        COUNT(DISTINCT username)::integer    AS total_users,
+        COALESCE(SUM(input_tokens),0)::integer  AS total_input_tokens,
+        COALESCE(SUM(output_tokens),0)::integer AS total_output_tokens,
+        COALESCE(SUM(total_tokens),0)::integer  AS total_tokens_all
+      FROM analytics
+      WHERE success = true
+    `,
+    sql`
+      SELECT
+        ROUND(AVG(input_tokens))::integer  AS avg_input_last20,
+        ROUND(AVG(output_tokens))::integer AS avg_output_last20,
+        ROUND(AVG(total_tokens))::integer  AS avg_total_last20,
+        ROUND(AVG(duration_ms))::integer   AS avg_duration_ms_last20
+      FROM (
+        SELECT input_tokens, output_tokens, total_tokens, duration_ms
+        FROM analytics
+        WHERE success = true
+        ORDER BY created_at DESC
+        LIMIT 20
+      ) sub
+    `,
+  ]);
+
+  const t = totalsResult[0] as Record<string, number>;
+  const a = last20Result[0] as Record<string, number>;
+
+  return {
+    total_requests: t.total_requests ?? 0,
+    total_users: t.total_users ?? 0,
+    total_input_tokens: t.total_input_tokens ?? 0,
+    total_output_tokens: t.total_output_tokens ?? 0,
+    total_tokens_all: t.total_tokens_all ?? 0,
+    avg_input_last20: a.avg_input_last20 ?? 0,
+    avg_output_last20: a.avg_output_last20 ?? 0,
+    avg_total_last20: a.avg_total_last20 ?? 0,
+    avg_duration_ms_last20: a.avg_duration_ms_last20 ?? 0,
+    last_updated: new Date().toISOString(),
+  };
+}
+

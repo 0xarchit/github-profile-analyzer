@@ -5,24 +5,27 @@ import {
   TelegramAlertCollector,
 } from "./telegram-alert";
 
-const GITHUB_PAT_TOKENS = (process.env.GITHUB_PAT_TOKENS || "")
-  .split(",")
-  .filter(Boolean);
-const GITHUB_MODEL = process.env.GITHUB_MODEL || "openai/gpt-4.1";
+// Modal.com LLM endpoint (OpenAI-compatible). GITHUB_ENDPOINT should end at /v1.
+const LLM_ENDPOINT =
+  (process.env.GITHUB_ENDPOINT || "").replace(/\/$/, "") +
+  "/chat/completions";
+const LLM_API_KEY = process.env.LLM_API_KEY || "";
+// Model name is fixed server-side on Modal; keep as env var for observability.
+const LLM_MODEL = process.env.GITHUB_MODEL || "gpt-4o-mini";
 
 const AI_TIMEOUT_MS = 45000;
 const AI_RETRY_ATTEMPTS = 3;
 const AI_RETRY_DELAY_MS = 2000;
 
-function getFallbackKey(): string {
-  const key =
-    GITHUB_PAT_TOKENS[Math.floor(Math.random() * GITHUB_PAT_TOKENS.length)];
-  if (!key)
-    throw new Error("GITHUB_PAT_TOKENS environment variable is required");
-  return key;
-}
-
 export type AIAnalysis = ValidatedAnalysisResult;
+
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  duration_ms: number;
+  model: string;
+}
 
 type AlertedError = Error & { __alertSent?: boolean };
 
@@ -31,26 +34,39 @@ function markAlertSent(error: Error): Error {
   return error;
 }
 
+/**
+ * Minifies a ProfileSummary into a compact payload optimised for token savings.
+ * - Top repos capped at 15 (was 20)
+ * - Other repos capped at 50 (was 80)
+ * - Bio truncated to 80 chars
+ * - Null descriptions stripped from top repos
+ */
 function minifyProfile(profile: ProfileSummary) {
   const allRepos = [
     ...Object.entries(profile.original_repos).map(([, r]) => ({ ...r })),
   ].sort((a, b) => b.stars + b.forks - (a.stars + a.forks));
 
-  const tr = allRepos.slice(0, 20).map((r) => ({
-    n: r.n,
-    d: r.description?.slice(0, 100),
-    s: r.stars,
-    f: r.forks,
-    l: r.primary_lang,
-  }));
+  const tr = allRepos.slice(0, 15).map((r) => {
+    const entry: Record<string, unknown> = {
+      n: r.n,
+      s: r.stars,
+      f: r.forks,
+      l: r.primary_lang,
+    };
+    // Only include description when it is non-empty
+    if (r.description) entry.d = r.description.slice(0, 80);
+    return entry;
+  });
 
-  const or = allRepos.slice(20, 100).map((r) => [r.n, r.stars, r.primary_lang]);
+  const or = allRepos
+    .slice(15, 65)
+    .map((r) => [r.n, r.stars, r.primary_lang]);
 
   return {
     u: {
       un: profile.username,
       nm: profile.name,
-      bio: profile.bio?.slice(0, 120),
+      bio: profile.bio?.slice(0, 80),
       fol: profile.followers,
       sc: profile.total_stars,
       rc: profile.public_repo_count,
@@ -69,15 +85,29 @@ function minifyProfile(profile: ProfileSummary) {
   };
 }
 
+/**
+ * Compressed system prompt — all extraneous whitespace removed to minimise
+ * prompt tokens. Keys use the same single-letter abbreviations as minifyProfile.
+ */
+const SYSTEM_PROMPT =
+  `You are a professional GitHub Auditor. Tone: witty, analytical, slightly sarcastic ("roast" style). No emojis.` +
+  ` Keys: u=user info, tr=top 15 repos {n,s,f,l,d?}, or=other repos [name,stars,lang], st=stats (tc=contributions,cc=commits,pr=PRs,ir=issues,cs=streak,ls=best,l=langs).` +
+  ` Return JSON only:` +
+  ` {"score":<0-100>,"segments":{"roast":"<2-3 sentence brutal funny roast>","technical_analysis":"<deep dive code quality stack repos>","strategic_advice":"<long-term career advice>"}` +
+  `,"improvement_areas":["<area>"],"diagnostics":["<observation>"]` +
+  `,"project_ideas":{"1":{"title":"...","description":"...","tech stack":["..."]},"2":{"title":"...","description":"...","tech stack":["..."]},"3":{"title":"...","description":"...","tech stack":["..."]}}` +
+  `,"tag":{"tag_name":"...","description":"..."},"developer_type":"<Professional Title>"}` +
+  ` IMPORTANT: Return PURE JSON ONLY starting directly with '{'. Do not include thinking, reasoning, or preamble text. developer_type must be a direct child of root. Generate exactly 3 unique project_ideas. Keep text concise.`;
 
 async function callAIWithTimeout(
-  apiKey: string,
   systemPrompt: string,
   minified: unknown,
   attempt: number = 1,
 ): Promise<Response> {
   console.log("[AI_ANALYSIS] AI API call attempt", {
     attempt,
+    endpoint: LLM_ENDPOINT,
+    model: LLM_MODEL,
     timeoutMs: AI_TIMEOUT_MS,
   });
   const controller = new AbortController();
@@ -90,21 +120,111 @@ async function callAIWithTimeout(
   }, AI_TIMEOUT_MS);
 
   try {
-    return await fetch("https://models.github.ai/inference/chat/completions", {
+    const schemaPayload = {
+      model: LLM_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify(minified) },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "github_analysis_result",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              score: { type: "integer" },
+              segments: {
+                type: "object",
+                properties: {
+                  roast: { type: "string" },
+                  technical_analysis: { type: "string" },
+                  strategic_advice: { type: "string" },
+                },
+                required: ["roast", "technical_analysis", "strategic_advice"],
+                additionalProperties: false,
+              },
+              improvement_areas: {
+                type: "array",
+                items: { type: "string" },
+              },
+              diagnostics: {
+                type: "array",
+                items: { type: "string" },
+              },
+              project_ideas: {
+                type: "object",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    "tech stack": {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  required: ["title", "description", "tech stack"],
+                  additionalProperties: false,
+                },
+              },
+              tag: {
+                type: "object",
+                properties: {
+                  tag_name: { type: "string" },
+                  description: { type: "string" },
+                },
+                required: ["tag_name", "description"],
+                additionalProperties: false,
+              },
+              developer_type: { type: "string" },
+            },
+            required: [
+              "score",
+              "segments",
+              "improvement_areas",
+              "diagnostics",
+              "project_ideas",
+              "tag",
+              "developer_type",
+            ],
+            additionalProperties: false,
+          },
+        },
+      },
+      max_tokens: 4000,
+    };
+
+    const res = await fetch(LLM_ENDPOINT, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${LLM_API_KEY}`,
         "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify(schemaPayload),
+    });
+
+    if (res.ok || res.status !== 400) return res;
+
+    // Fallback for endpoints that do not support json_schema
+    console.warn("[AI_ANALYSIS] json_schema rejected by endpoint, falling back to json_object...");
+    return await fetch(LLM_ENDPOINT, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${LLM_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: GITHUB_MODEL,
+        model: LLM_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: JSON.stringify(minified) },
         ],
         response_format: { type: "json_object" },
+        max_tokens: 4000,
       }),
     });
   } finally {
@@ -113,67 +233,33 @@ async function callAIWithTimeout(
 }
 
 /**
- * Calls the GitHub Models inference API to generate an AI analysis of a GitHub profile.
+ * Calls the Modal.com LLM endpoint (OpenAI-compatible) to generate an AI analysis
+ * of a GitHub profile.
  *
  * @param profile        The full `ProfileSummary` to analyse.
- * @param userToken      Optional OAuth token belonging to the **viewer** (logged-in user).
- *                       When provided, it is used as the inference API key first,
- *                       benefiting from that user's GitHub Models quota.
- *                       Falls back to the shared GITHUB_TOKENS pool on failure.
  * @param alertCollector Optional `TelegramAlertCollector` for deferred, batched alerts.
- *                       When provided, errors are collected and flushed together with the
- *                       caller's other alerts. When omitted, alerts fire immediately.
- * @throws `Error("CORRUPT_INTELLIGENCE")` if the AI response cannot be parsed or fails
- *         Zod validation after all retry attempts.
- * @throws On persistent HTTP errors (e.g. 429, 500) after `AI_RETRY_ATTEMPTS` retries.
+ * @returns `{ analysis, usage }` — validated analysis result and token usage data.
+ * @throws `Error("CORRUPT_INTELLIGENCE")` if the AI response fails validation.
+ * @throws On persistent HTTP errors after `AI_RETRY_ATTEMPTS` retries.
  */
 export async function getAIAnalysis(
   profile: ProfileSummary,
-  userToken?: string,
   alertCollector?: TelegramAlertCollector,
-): Promise<AIAnalysis> {
+): Promise<{ analysis: AIAnalysis; usage: TokenUsage }> {
+  const startMs = Date.now();
+
   console.log("[AI_ANALYSIS] Starting AI analysis", {
     username: profile.username,
-    hasUserToken: !!userToken,
-    model: GITHUB_MODEL,
+    model: LLM_MODEL,
+    endpoint: LLM_ENDPOINT,
     retryAttempts: AI_RETRY_ATTEMPTS,
     timeoutMs: AI_TIMEOUT_MS,
   });
-  const apiKey = userToken || getFallbackKey();
-  console.log("[AI_ANALYSIS] Using API key", { isUserKey: !!userToken });
+
   const minified = minifyProfile(profile);
   console.log("[AI_ANALYSIS] Profile minified", {
     minifiedSize: JSON.stringify(minified).length,
   });
-
-  const systemPrompt = `You are a professional GitHub Auditor. Your tone is witty, analytical, and slightly sarcastic (a "roast" style).
-Analyze the minified JSON data and return a structured JSON response. **Do not use emojis in your response.**
-
-Data Keys:
-- "u": User info
-- "tr": Top 20 Detailed Repos
-- "or": Other Repos [name, stars, lang]
-- "st": Stats (tc=contributions, cc=commits, pr=PRs, ir=Issues, cs=streak, l=langs)
-
-Return format:
-{
-  "score": <0-100>,
-  "segments": {
-    "roast": "<a 2-3 sentence brutal but funny roast of the profile>",
-    "technical_analysis": "<a deep dive into code quality, stack choices, and repository architecture>",
-    "strategic_advice": "<long-term advice for career growth or profile impact>"
-  },
-  "improvement_areas": ["<area>"],
-  "diagnostics": ["<observation>"],
-  "project_ideas": {
-    "1": { "title": "...", "description": "...", "tech stack": ["..."] },
-    "2": { "title": "...", "description": "...", "tech stack": ["..."] },
-    "3": { "title": "...", "description": "...", "tech stack": ["..."] }
-  },
-  "tag": { "tag_name": "...", "description": "..." },
-  "developer_type": "<Professional Title>"
-}
-IMPORTANT: Always return 'developer_type' as a direct child of the root object. You MUST generate exactly 3 unique project ideas in the 'project_ideas' object. Do not leave any fields empty.`;
 
   let lastError: Error | null = null;
   let response: Response | null = null;
@@ -181,17 +267,12 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
   for (let attempt = 1; attempt <= AI_RETRY_ATTEMPTS; attempt++) {
     response = null;
     try {
-      console.log("[AI_ANALYSIS] Sending request to GitHub AI API", {
+      console.log("[AI_ANALYSIS] Sending request to Modal LLM endpoint", {
         attempt,
-        url: "https://models.github.ai/inference/chat/completions",
-        model: GITHUB_MODEL,
+        url: LLM_ENDPOINT,
+        model: LLM_MODEL,
       });
-      response = await callAIWithTimeout(
-        apiKey,
-        systemPrompt,
-        minified,
-        attempt,
-      );
+      response = await callAIWithTimeout(SYSTEM_PROMPT, minified, attempt);
       console.log("[AI_ANALYSIS] AI API response received", {
         attempt,
         status: response.status,
@@ -232,7 +313,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       error: lastError || new Error("AI API request failed after all retries"),
       context: {
         username: profile.username,
-        model: GITHUB_MODEL,
+        model: LLM_MODEL,
         attempts: AI_RETRY_ATTEMPTS,
       },
     };
@@ -255,7 +336,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       error: new Error(`AI API error: ${response?.status || "unknown"}`),
       context: {
         username: profile.username,
-        model: GITHUB_MODEL,
+        model: LLM_MODEL,
         status: response?.status,
         errorText: errorText.slice(0, 500),
       },
@@ -271,21 +352,33 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
 
   console.log("[AI_ANALYSIS] Parsing AI response");
   const data = await response.json();
+
+  // Extract token usage from OpenAI-compatible response
+  const rawUsage = data.usage as
+    | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+    | undefined;
+  const usage: TokenUsage = {
+    input_tokens: rawUsage?.prompt_tokens ?? 0,
+    output_tokens: rawUsage?.completion_tokens ?? 0,
+    total_tokens: rawUsage?.total_tokens ?? 0,
+    duration_ms: Date.now() - startMs,
+    model: LLM_MODEL,
+  };
+
   const content = data.choices?.[0]?.message?.content;
   console.log("[AI_ANALYSIS] AI response content extracted", {
     hasContent: !!content,
     contentLength: content?.length || 0,
+    usage,
   });
+
   if (!content) {
     console.error("[AI_ANALYSIS] Empty content from AI response", { data });
     const alertPayload = {
       source: "AI_ANALYSIS",
       message: "Empty AI response content",
       error: new Error("CORRUPT_INTELLIGENCE: Empty AI response content."),
-      context: {
-        username: profile.username,
-        model: GITHUB_MODEL,
-      },
+      context: { username: profile.username, model: LLM_MODEL },
     };
     if (alertCollector) alertCollector.add(alertPayload);
     else void sendTelegramAlert(alertPayload).catch(() => null);
@@ -296,7 +389,49 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
 
   try {
     console.log("[AI_ANALYSIS] Parsing JSON content");
-    const rawAnalysis = JSON.parse(content);
+    // Strip markdown code fences (e.g. ```json ... ```) or preambles if present
+    let cleanedContent = content.trim();
+    if (cleanedContent.startsWith("```")) {
+      cleanedContent = cleanedContent
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "");
+    }
+    const firstBrace = cleanedContent.indexOf("{");
+    const lastBrace = cleanedContent.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1);
+    }
+
+    let rawAnalysis;
+    try {
+      rawAnalysis = JSON.parse(cleanedContent);
+    } catch {
+      // If output was truncated at token limit, attempt basic structural JSON repair
+      console.warn("[AI_ANALYSIS] Standard JSON.parse failed, attempting JSON auto-repair...");
+      let repaired = cleanedContent;
+      // Close unclosed strings
+      const openQuotes = (repaired.match(/"/g) || []).length;
+      if (openQuotes % 2 !== 0) {
+        repaired += '"';
+      }
+      // Count unclosed braces/brackets
+      let openBraces = 0;
+      let openBrackets = 0;
+      let inString = false;
+      for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+        if (char === '"' && repaired[i - 1] !== "\\") inString = !inString;
+        if (!inString) {
+          if (char === "{") openBraces++;
+          else if (char === "}") openBraces--;
+          else if (char === "[") openBrackets++;
+          else if (char === "]") openBrackets--;
+        }
+      }
+      while (openBrackets > 0) { repaired += "]"; openBrackets--; }
+      while (openBraces > 0) { repaired += "}"; openBraces--; }
+      rawAnalysis = JSON.parse(repaired);
+    }
     console.log("[AI_ANALYSIS] JSON parsed successfully", {
       score: rawAnalysis.score,
       hasSegments: !!rawAnalysis.segments,
@@ -322,8 +457,9 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
     const validated = AnalysisResultSchema.parse(ensuredAnalysis) as AIAnalysis;
     console.log("[AI_ANALYSIS] Analysis complete and validated", {
       score: validated.score,
+      usage,
     });
-    return validated;
+    return { analysis: validated, usage };
   } catch (err) {
     console.error("[AI_ANALYSIS] Response Parsing/Validation Failure", {
       error: err instanceof Error ? err.message : String(err),
@@ -336,7 +472,7 @@ IMPORTANT: Always return 'developer_type' as a direct child of the root object. 
       error: err,
       context: {
         username: profile.username,
-        model: GITHUB_MODEL,
+        model: LLM_MODEL,
         contentPreview: content.slice(0, 240),
       },
     };

@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
 import { normalizeUsername, TARGET_REPO } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
+import { getRequestContext } from "@cloudflare/next-on-pages";
+import { deleteCachedData } from "@/lib/redis";
 
 export const runtime = "edge";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getD1Binding(): any {
+  if (process.env.DB) return process.env.DB;
+  try {
+    const ctx = getRequestContext();
+    const env = ctx?.env as { DB?: unknown } | undefined;
+    return env?.DB ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
 
@@ -104,10 +118,11 @@ export async function POST(request: Request) {
 
     const normalized = normalizeUsername(sender);
 
-    if (process.env.DB) {
+    const db = getD1Binding();
+    if (db) {
       try {
         if (typedPayload.action === "created") {
-          await process.env.DB.prepare(
+          await db.prepare(
             "INSERT OR IGNORE INTO stargazers (username) VALUES (?)"
           )
             .bind(normalized)
@@ -121,11 +136,15 @@ export async function POST(request: Request) {
             context: { username: normalized },
           });
         } else if (typedPayload.action === "deleted") {
-          await process.env.DB.prepare(
+          await db.prepare(
             "DELETE FROM stargazers WHERE username = ?"
           )
             .bind(normalized)
             .run();
+
+          // Revoke Redis star caches immediately on unstar
+          await deleteCachedData(`star_verified:${normalized}`).catch(() => null);
+          await deleteCachedData(`repo:stargazers:${TARGET_REPO}`).catch(() => null);
           
           console.log(`[Webhook] Successfully removed stargazer: ${normalized}`);
           
