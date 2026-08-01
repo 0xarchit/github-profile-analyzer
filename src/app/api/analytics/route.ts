@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAnalyticsSummary } from "@/lib/db";
 import { getCachedData, setCachedData } from "@/lib/redis";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 const ANALYTICS_CACHE_KEY = "analytics:summary";
 // 15 minutes — also invalidated on every new successful analysis

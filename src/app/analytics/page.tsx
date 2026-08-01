@@ -11,6 +11,8 @@ export const metadata: Metadata = {
     "Live protocol telemetry — public token usage and request analytics for GitHub Profile Analyzer.",
 };
 
+export const runtime = "edge";
+
 // Allow Next.js to revalidate every 15 minutes at the page level too
 export const revalidate = 900;
 

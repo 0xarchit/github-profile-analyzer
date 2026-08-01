@@ -15,8 +15,8 @@ import {
   insertAnalytics,
 } from "@/lib/db";
 
-// Node runtime — Modal.com endpoint may need longer timeouts than Edge allows
-export const runtime = "nodejs";
+// Node runtime replaced with Edge runtime for next-on-pages builder compatibility
+export const runtime = "edge";
 
 const ANALYTICS_CACHE_KEY = "analytics:summary";
 
