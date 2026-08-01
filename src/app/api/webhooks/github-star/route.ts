@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeUsername, TARGET_REPO } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
 import { getRequestContext } from "@cloudflare/next-on-pages";
+import { deleteCachedData } from "@/lib/redis";
 
 export const runtime = "edge";
 
@@ -140,6 +141,10 @@ export async function POST(request: Request) {
           )
             .bind(normalized)
             .run();
+
+          // Revoke Redis star caches immediately on unstar
+          await deleteCachedData(`star_verified:${normalized}`).catch(() => null);
+          await deleteCachedData(`repo:stargazers:${TARGET_REPO}`).catch(() => null);
           
           console.log(`[Webhook] Successfully removed stargazer: ${normalized}`);
           

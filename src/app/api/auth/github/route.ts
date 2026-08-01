@@ -24,7 +24,7 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: ["read:user", "repo", "read:models"].join(" "),
+    scope: "read:user",
     state,
   });
 

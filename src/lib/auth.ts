@@ -69,7 +69,7 @@ export async function createGuestSession(username: string) {
   const token = await new SignJWT({ username, verified: true })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime("1h")
     .sign(JWT_SECRET);
 
   (await cookies()).set(GUEST_COOKIE, token, {
@@ -77,7 +77,7 @@ export async function createGuestSession(username: string) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 3600,
   });
 }
 

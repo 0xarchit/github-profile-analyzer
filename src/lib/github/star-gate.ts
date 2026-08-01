@@ -29,8 +29,8 @@ import {
 
 const STAR_PAGE_SIZE = 100;
 const STAR_QUICK_LIMIT = 6;
-const STAR_DEEP_LIMIT = 120;
-const STAR_REST_LIMIT = 250;
+const STAR_DEEP_LIMIT = 30; // Bounded to 30 pages to respect Workers subrequest limits
+const STAR_REST_LIMIT = 30;
 const STAR_CACHE_TTL = 900;
 const STAR_GATE_DEBUG = process.env.STAR_GATE_DEBUG === "1";
 
@@ -711,12 +711,10 @@ export async function verifyAndInjectStar(username: string): Promise<boolean> {
   starGateLog("verify_guest_start", { username: normalizedUsername });
 
   // Strategy 0: Cloudflare D1 local database (O(1) lookups)
-  if (process.env.DB) {
-    const isStarred = await isStarredInD1(normalizedUsername);
-    if (isStarred) {
-      starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
-      return true;
-    }
+  const isStarred = await isStarredInD1(normalizedUsername);
+  if (isStarred) {
+    starGateLog("verify_guest_pass_d1", { username: normalizedUsername });
+    return true;
   }
 
   const isVerified = await executeBidirectionalStarCheck(normalizedUsername);
