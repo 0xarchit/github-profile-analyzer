@@ -3,7 +3,7 @@ import { UsernameSchema } from "@/lib/validation";
 import { getProfileSummary, checkStarStatus } from "@/lib/github";
 import { getAIAnalysis } from "@/lib/ai";
 import { getSession } from "@/lib/auth";
-import { getCachedData, setCachedData } from "@/lib/redis";
+import { getCachedData, setCachedData, deleteCachedData } from "@/lib/redis";
 import { getUserByUsername, getUserByGithubId, insertAnalytics } from "@/lib/db";
 
 export const runtime = "edge";
@@ -120,15 +120,21 @@ export async function GET(request: NextRequest) {
       });
       await setCachedData(cacheKey, finalData);
 
-      void insertAnalytics({
-        username,
-        model: usage.model,
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        duration_ms: usage.duration_ms,
-        success: true,
-      }).catch(() => null);
+      // Await analytics insert & cache invalidation inline before completing stream
+      try {
+        await insertAnalytics({
+          username,
+          model: usage.model,
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          total_tokens: usage.total_tokens,
+          duration_ms: usage.duration_ms,
+          success: true,
+        });
+        await deleteCachedData("analytics:summary").catch(() => null);
+      } catch (analyticsErr) {
+        console.error("[SSE_STREAM] Analytics insertion failed:", analyticsErr);
+      }
 
       await sendEvent("status", {
         step: "COMPLETE",
