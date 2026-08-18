@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "./ProfileClient";
+import { DeterministicProfileClient } from "@/components/DeterministicProfileClient";
 import { getUserByUsername, getLatestSelfScan, getScanById } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
@@ -65,13 +66,19 @@ export async function generateMetadata({
 
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ username: string }>;
+  searchParams: Promise<{ engine?: string }>;
 }) {
   const { username } = await params;
+  const { engine } = await searchParams;
   if (username.includes(".")) {
     notFound();
   }
+
+  // Determine engine mode: deterministic is default, only accept "legacy" or "deterministic"
+  const engineMode = engine === "legacy" ? "legacy" : "deterministic";
 
   const user = await getUserByUsername(username);
   let isOwner = false;
@@ -104,5 +111,9 @@ export default async function Page({
       } as AnalysisResult)
     : undefined;
 
-  return <ProfileClient username={username} initialData={initialData} />;
+  if (engineMode === "deterministic") {
+    return <DeterministicProfileClient username={username} />;
+  }
+
+  return <ProfileClient username={username} initialData={initialData} engineMode={engineMode} />;
 }

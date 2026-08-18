@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Flame, Trophy, Zap, User, Power } from "lucide-react";
+import { Flame, Zap, User, Power, Cpu, Brain } from "lucide-react";
 import { Header } from "@/components/Header";
 import { fetchAuthIdentity, type AuthIdentity } from "@/lib/client-auth";
 
@@ -12,6 +12,7 @@ export default function Home() {
   const [inputError, setInputError] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [versionOpen, setVersionOpen] = useState<"hover" | "click" | null>(null);
+  const [engineMode, setEngineMode] = useState<"deterministic" | "legacy">("deterministic");
   const router = useRouter();
 
   useEffect(() => {
@@ -34,7 +35,7 @@ export default function Home() {
       !/[/?#]/.test(clean)
     ) {
       setInputError(null);
-      router.push(`/${encodeURIComponent(clean)}`);
+      router.push(`/${encodeURIComponent(clean)}?engine=${engineMode}`);
     } else {
       setInputError(
         "IDENTIFIER_INVALID: Target must be a valid GitHub handle.",
@@ -149,6 +150,35 @@ export default function Home() {
           onSubmit={handleAnalyze}
           className="max-w-2xl mx-auto w-full space-y-6 text-black px-2 sm:px-0"
         >
+          <div className="flex justify-center">
+            <div className="inline-flex border-4 border-black shadow-neo">
+              <button
+                type="button"
+                onClick={() => setEngineMode("deterministic")}
+                className={`px-4 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-xs font-heading uppercase font-bold flex items-center gap-2 transition-all ${
+                  engineMode === "deterministic"
+                    ? "bg-black text-white"
+                    : "bg-white text-black hover:bg-neo-yellow"
+                }`}
+              >
+                <Cpu className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span>DETERMINISTIC</span>
+                <span className="text-[8px] sm:text-[10px] px-1.5 py-0.5 bg-neo-pink text-white border border-black">BETA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEngineMode("legacy")}
+                className={`px-4 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-xs font-heading uppercase font-bold flex items-center gap-2 transition-all ${
+                  engineMode === "legacy"
+                    ? "bg-black text-white"
+                    : "bg-white text-black hover:bg-neo-yellow"
+                }`}
+              >
+                <Brain className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span>LEGACY AI</span>
+              </button>
+            </div>
+          </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
             <div className="flex-1 relative group min-w-0">
               <div className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2 z-10 pointer-events-none">
@@ -209,9 +239,9 @@ export default function Home() {
 
         <footer className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-16">
           <FeatureCard
-            title="AI Deep Scan"
-            desc="Deep kernel analysis of authored repositories."
-            icon={<Bot className="w-12 h-12" />}
+            title="Deterministic Engine"
+            desc="Rule-based analysis with transparent scoring and zero LLM calls."
+            icon={<Cpu className="w-12 h-12" />}
           />
           <FeatureCard
             title="Consistency Hub"
@@ -219,9 +249,9 @@ export default function Home() {
             icon={<Flame className="w-12 h-12" />}
           />
           <FeatureCard
-            title="Merit Badges"
-            desc="AI-quantified achievement protocol artifacts."
-            icon={<Trophy className="w-12 h-12" />}
+            title="Legacy AI Mode"
+            desc="LLM-powered deep analysis with neural roasts."
+            icon={<Brain className="w-12 h-12" />}
           />
         </footer>
       </div>
