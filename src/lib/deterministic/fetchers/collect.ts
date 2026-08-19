@@ -274,8 +274,17 @@ async function fetchSecurity(client: GitHubClient, repo: GitHubRepo, unavailable
   };
 }
 
-// In-memory snapshot store for follower/star history
+// In-memory snapshot store for follower/star history (bounded LRU)
+const MAX_SNAPSHOT_USERS = 200;
 const snapshotStore = new Map<string, EngineData["snapshots"]>();
+
+const recordUserSnapshot = (username: string, snapshots: EngineData["snapshots"]) => {
+  if (snapshotStore.size >= MAX_SNAPSHOT_USERS && !snapshotStore.has(username)) {
+    const oldest = snapshotStore.keys().next().value;
+    if (oldest) snapshotStore.delete(oldest);
+  }
+  snapshotStore.set(username, snapshots);
+};
 
 export async function collectEngineData(
   client: GitHubClient,
@@ -518,7 +527,7 @@ export async function collectEngineData(
   }
   sampled["fork-comparisons"] = {
     size: Object.keys(forkComparisons).length,
-    note: "Fork divergence checks are capped at five forks.",
+    note: `Fork divergence checks are capped at ${Math.min(5, profile.forkLimit)} forks.`,
   };
 
   const stargazers: EngineData["stargazers"] = {};
@@ -539,7 +548,7 @@ export async function collectEngineData(
   }
   sampled["stargazers"] = {
     size: Object.values(stargazers).reduce((sum, items) => sum + items.length, 0),
-    note: "Star history uses at most the first 100 stargazers on the top three repositories.",
+    note: `Star history uses at most the first 100 stargazers across top ${profile.starRepositoryLimit} repositories.`,
   };
 
   const commitDetails: Record<string, GitHubCommit> = {};
@@ -560,7 +569,7 @@ export async function collectEngineData(
   }
   sampled["commit-details"] = {
     size: Object.keys(commitDetails).length,
-    note: "Per-commit diff signals use at most 100 commits across the top three repositories.",
+    note: `Per-commit diff signals use at most ${profile.commitDetailLimit} commits across top repositories.`,
   };
 
   const totalStars = repos
@@ -571,7 +580,7 @@ export async function collectEngineData(
     ...history,
     { at: now.toISOString(), followers: user.followers, stars: totalStars, orgs: orgs.map((org) => org.login) },
   ].slice(-50);
-  snapshotStore.set(username.toLowerCase(), nextHistory);
+  recordUserSnapshot(username.toLowerCase(), nextHistory);
   emit("phase", "collection-complete", `GitHub collection complete after ${client.budget.snapshot().rest.used + client.budget.snapshot().graphql.used + client.budget.snapshot().search.used} API calls.`);
 
   return {

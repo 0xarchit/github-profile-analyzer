@@ -127,18 +127,22 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   });
 
   const username = normalizeUsername(input);
-  const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}`;
+  const hasUserToken = Boolean(options.token && options.token.trim());
+  const authTier = hasUserToken ? "USER-OAUTH" : "TOKEN-POOL";
+  const tokenOrProvider = hasUserToken ? (options.token as string).trim() : getFallbackToken;
+  const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}:${authTier.toLowerCase()}`;
 
   if (!options.bypassCache) {
-    const cached = await getCachedData<EngineResult>(redisCacheKey);
-    if (cached) {
-      emit("cache", "cache", `Serving cached ${profile.label.toLowerCase()} deterministic result for @${username}.`, emptyBudget(profile));
-      return { ...cached, meta: { ...cached.meta, cache: { ...cached.meta.cache, resultHit: true } } };
+    try {
+      const cached = await getCachedData<EngineResult>(redisCacheKey);
+      if (cached) {
+        emit("cache", "cache", `Serving cached ${profile.label.toLowerCase()} deterministic result for @${username}.`, emptyBudget(profile));
+        return { ...cached, meta: { ...cached.meta, cache: { ...cached.meta.cache, resultHit: true } } };
+      }
+    } catch {
+      // Soft cache-miss on Redis failure
     }
   }
-
-  const tokenOrProvider = options.token && options.token.trim() ? options.token.trim() : getFallbackToken;
-  const authTier = options.token && options.token.trim() ? "USER-OAUTH" : "TOKEN-POOL";
 
   emit("phase", "initializing", `Starting ${profile.label.toLowerCase()} deterministic analysis for @${username}; ${authTier.toLowerCase()} mode.`, emptyBudget(profile));
   const client = new GitHubClient(tokenOrProvider, profile.budget, {

@@ -95,6 +95,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         });
 
         es.addEventListener("complete", async (e) => {
+          if (esRef.current !== es) return;
           setIsRefreshing(false);
           try {
             const r = JSON.parse(e.data) as StoredEngineResult;
@@ -115,6 +116,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         });
 
         es.addEventListener("error", (e) => {
+          if (esRef.current !== es) return;
           setIsRefreshing(false);
           try {
             const payload = JSON.parse((e as MessageEvent).data || "{}");
@@ -131,6 +133,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         });
 
         es.onerror = () => {
+          if (esRef.current !== es) return;
+          setError("NETWORK_FAILURE");
           setIsRefreshing(false);
           es.close();
           esRef.current = null;
