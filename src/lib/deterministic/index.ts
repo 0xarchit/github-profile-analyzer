@@ -1,4 +1,4 @@
-export { analyzeGitHubProfile, getRequiredGitHubToken, getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "./engine";
+export { analyzeGitHubProfile, getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "./engine";
 export type { AnalyzeOptions } from "./engine";
 export type {
   EngineResult,

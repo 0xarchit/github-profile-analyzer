@@ -62,12 +62,6 @@ export interface AnalyzeOptions {
   onProgress?: AnalysisProgressCallback;
 }
 
-export function getRequiredGitHubToken(explicitToken?: string): string {
-  if (explicitToken && explicitToken.trim()) return explicitToken.trim();
-  if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim()) return process.env.GITHUB_TOKEN.trim();
-  return getFallbackToken();
-}
-
 const normalizeUsername = (value: string) => {
   const username = value.trim();
   if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(username)) {

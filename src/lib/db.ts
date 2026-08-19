@@ -463,6 +463,22 @@ export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
   };
 }
 
+function mapDeterministicScanRow(r: Record<string, unknown>): DeterministicScan {
+  return {
+    id: String(r.id),
+    user_id: Number(r.user_id),
+    username: String(r.username),
+    mode: String(r.mode),
+    overall_score: Number(r.overall_score),
+    letter_grade: r.letter_grade ? String(r.letter_grade) : null,
+    archetype: r.archetype ? String(r.archetype) : null,
+    data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
+    duration_ms: r.duration_ms ? Number(r.duration_ms) : null,
+    api_calls_used: Number(r.api_calls_used || 0),
+    created_at: String(r.created_at),
+  };
+}
+
 /**
  * Persists a deterministic engine analysis result to the deterministic_scans table.
  */
@@ -483,33 +499,13 @@ export async function saveDeterministicScan(
         user_id, username, mode, overall_score, letter_grade, archetype, data, duration_ms, api_calls_used
       )
       VALUES (
-        ${userId},
-        ${username.trim()},
-        ${mode},
-        ${overallScore},
-        ${letterGrade ?? null},
-        ${archetype ?? null},
-        ${JSON.stringify(data)},
-        ${durationMs ?? null},
-        ${apiCallsUsed ?? 0}
+        ${userId}, ${username.trim()}, ${mode}, ${overallScore},
+        ${letterGrade ?? null}, ${archetype ?? null}, ${JSON.stringify(data)},
+        ${durationMs ?? null}, ${apiCallsUsed ?? 0}
       )
       RETURNING *
     `;
-    if (!rows || rows.length === 0) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: String(r.id),
-      user_id: Number(r.user_id),
-      username: String(r.username),
-      mode: String(r.mode),
-      overall_score: Number(r.overall_score),
-      letter_grade: r.letter_grade ? String(r.letter_grade) : null,
-      archetype: r.archetype ? String(r.archetype) : null,
-      data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
-      duration_ms: r.duration_ms ? Number(r.duration_ms) : null,
-      api_calls_used: Number(r.api_calls_used || 0),
-      created_at: String(r.created_at),
-    };
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
   } catch (err) {
     console.error("[DB] saveDeterministicScan failed:", err);
     return null;
@@ -525,35 +521,14 @@ export async function getLatestDeterministicScan(
   mode?: string,
 ): Promise<DeterministicScan | null> {
   try {
-    const rows = mode
-      ? await sql`
-          SELECT * FROM deterministic_scans
-          WHERE user_id = ${userId} AND LOWER(username) = ${username.toLowerCase()} AND mode = ${mode}
-          ORDER BY created_at DESC
-          LIMIT 1
-        `
-      : await sql`
-          SELECT * FROM deterministic_scans
-          WHERE user_id = ${userId} AND LOWER(username) = ${username.toLowerCase()}
-          ORDER BY created_at DESC
-          LIMIT 1
-        `;
-
-    if (!rows || rows.length === 0) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: String(r.id),
-      user_id: Number(r.user_id),
-      username: String(r.username),
-      mode: String(r.mode),
-      overall_score: Number(r.overall_score),
-      letter_grade: r.letter_grade ? String(r.letter_grade) : null,
-      archetype: r.archetype ? String(r.archetype) : null,
-      data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
-      duration_ms: r.duration_ms ? Number(r.duration_ms) : null,
-      api_calls_used: Number(r.api_calls_used || 0),
-      created_at: String(r.created_at),
-    };
+    const rows = await sql`
+      SELECT * FROM deterministic_scans
+      WHERE user_id = ${userId} AND LOWER(username) = ${username.toLowerCase()}
+        AND (${mode ?? null}::text IS NULL OR mode = ${mode ?? null})
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
   } catch (err) {
     console.error("[DB] getLatestDeterministicScan failed:", err);
     return null;
@@ -567,26 +542,8 @@ export async function getDeterministicScanById(
   id: string,
 ): Promise<DeterministicScan | null> {
   try {
-    const rows = await sql`
-      SELECT * FROM deterministic_scans
-      WHERE id = ${id}
-      LIMIT 1
-    `;
-    if (!rows || rows.length === 0) return null;
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: String(r.id),
-      user_id: Number(r.user_id),
-      username: String(r.username),
-      mode: String(r.mode),
-      overall_score: Number(r.overall_score),
-      letter_grade: r.letter_grade ? String(r.letter_grade) : null,
-      archetype: r.archetype ? String(r.archetype) : null,
-      data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
-      duration_ms: r.duration_ms ? Number(r.duration_ms) : null,
-      api_calls_used: Number(r.api_calls_used || 0),
-      created_at: String(r.created_at),
-    };
+    const rows = await sql`SELECT * FROM deterministic_scans WHERE id = ${id} LIMIT 1`;
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
   } catch (err) {
     console.error("[DB] getDeterministicScanById failed:", err);
     return null;
