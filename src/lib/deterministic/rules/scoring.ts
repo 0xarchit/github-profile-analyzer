@@ -28,13 +28,17 @@ export const rule2_1VolumeScore: ScoreRule = (data) => {
 
 export const rule2_2ConsistencyScore: ScoreRule = (data) => {
   const weekly = Object.values(data.commitActivity).flatMap((weeks) => weeks.map((week) => week.total));
-  const activeRatio = ratio(data.graphql.calendar.filter((day) => day.contributionCount > 0).length, data.graphql.calendar.length);
+  // Count active days and compute longest streak in one sorted pass.
+  const sorted = [...data.graphql.calendar].sort((a, b) => a.date.localeCompare(b.date));
+  let activeDays = 0;
   let longest = 0;
   let running = 0;
-  for (const day of [...data.graphql.calendar].sort((a, b) => a.date.localeCompare(b.date))) {
-    running = day.contributionCount ? running + 1 : 0;
-    longest = Math.max(longest, running);
+  for (const day of sorted) {
+    if (day.contributionCount > 0) { activeDays++; running++; }
+    else { running = 0; }
+    if (running > longest) longest = running;
   }
+  const activeRatio = ratio(activeDays, data.graphql.calendar.length);
   const cv = coefficientOfVariation(weekly);
   const consistency = weightedAverage([[saturatingScore(longest, 0.08), 0.35], [activeRatio * 100, 0.4], [clamp(100 - cv * 35), 0.25]]);
   return score("2.2", "Consistency score", consistency, "Combines streak length, active-day ratio, and inverse weekly commit variance.", "GraphQL contributionCalendar + stats/commit_activity", { longestStreak: longest, activeDaysRatio: activeRatio, weeklyCoefficientOfVariation: cv });
@@ -70,8 +74,14 @@ export const rule2_6CodeQualityProxy: ScoreRule = (data) => {
   return score("2.6", "Code quality proxy", mean(values), "Deterministic repository hygiene flags: license, README size, tests, CI, images, and install instructions.", "contents API + repository metadata", { sampledRepositories: values.length });
 };
 
+// Module-level Set for O(1) .has() lookup instead of O(k) .includes() per signal.
+const AUTHENTICITY_SIGNAL_IDS = new Set([
+  "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7", "3.9",
+  "3.19", "3.22", "3.28", "3.29", "3.31", "3.34", "3.35",
+]);
+
 const suspiciousCount = (signals?: Record<string, SignalResult>) =>
-  Object.values(signals ?? {}).filter((signal) => signal.flagged && ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7", "3.9", "3.19", "3.22", "3.28", "3.29", "3.31", "3.34", "3.35"].includes(signal.id)).length;
+  Object.values(signals ?? {}).filter((signal) => signal.flagged && AUTHENTICITY_SIGNAL_IDS.has(signal.id)).length;
 
 export const rule2_7AuthenticityMultiplier: ScoreRule = (_data, signals) => {
   const flagged = suspiciousCount(signals);
@@ -79,12 +89,24 @@ export const rule2_7AuthenticityMultiplier: ScoreRule = (_data, signals) => {
   return score("2.7", "Authenticity multiplier", multiplier, `${flagged} flag-only anomaly signals affect the damping multiplier; no signal is a verdict.`, "Section 3 signals", { flaggedSignals: flagged, minimum: 0.4 });
 };
 
+// Single reduce pass computes pushed90, pushed180, medianAge inputs, and archivedCount together.
 export const rule2_8MaintenanceScore: ScoreRule = (data) => {
   const repos = reposWith(data);
-  const pushed90 = repos.filter((repo) => repo.pushed_at && daysBetween(repo.pushed_at, data.now) <= 90).length;
-  const pushed180 = repos.filter((repo) => repo.pushed_at && daysBetween(repo.pushed_at, data.now) <= 180).length;
-  const medianAge = median(repos.flatMap((repo) => repo.pushed_at ? [daysBetween(repo.pushed_at, data.now)] : []));
-  return score("2.8", "Maintenance score", weightedAverage([[ratio(pushed90, repos.length) * 100, 0.4], [ratio(pushed180, repos.length) * 100, 0.25], [clamp(100 - medianAge / 3), 0.25], [(1 - ratio(repos.filter((repo) => repo.archived).length, repos.length)) * 100, 0.1]]), "Recency and archived-ratio maintenance curve.", "GET /users/{u}/repos", { pushedWithin90Days: pushed90, pushedWithin180Days: pushed180, medianDaysSincePush: medianAge });
+  let pushed90 = 0;
+  let pushed180 = 0;
+  let archived = 0;
+  const ageDays: number[] = [];
+  for (const repo of repos) {
+    if (repo.archived) archived++;
+    if (repo.pushed_at) {
+      const days = daysBetween(repo.pushed_at, data.now);
+      ageDays.push(days);
+      if (days <= 90) pushed90++;
+      if (days <= 180) pushed180++;
+    }
+  }
+  const medianAge = median(ageDays);
+  return score("2.8", "Maintenance score", weightedAverage([[ratio(pushed90, repos.length) * 100, 0.4], [ratio(pushed180, repos.length) * 100, 0.25], [clamp(100 - medianAge / 3), 0.25], [(1 - ratio(archived, repos.length)) * 100, 0.1]]), "Recency and archived-ratio maintenance curve.", "GET /users/{u}/repos", { pushedWithin90Days: pushed90, pushedWithin180Days: pushed180, medianDaysSincePush: medianAge });
 };
 
 export const rule2_9ReleaseDisciplineScore: ScoreRule = (data) => {
@@ -111,12 +133,15 @@ export const rule2_11CommunityScore: ScoreRule = (data) => {
   return score("2.11", "Community score", weightedAverage([[latency, 0.3], [mergeRate, 0.25], [review, 0.25], [discussions, 0.2]]), "Maintainer response, merge rate, reviews, and discussions.", "GraphQL repository issue batch + Search API", { responseSamples: response.length, medianResponseHours: median(response), discussions: Object.values(data.issues).reduce((sum, item) => sum + item.discussions, 0) });
 };
 
+// Module-level const avoids reconstructing the weights object on every alert iteration.
+const SEVERITY_WEIGHTS: Record<string, number> = { critical: 35, high: 24, medium: 12, low: 4 };
+
 export const rule2_12SecurityHygieneScore: ScoreRule = (data) => {
   const values = Object.values(data.security).map((security) => {
     const scan = security.codeScanning ?? [];
     const dependabot = security.dependabot ?? [];
     const severity = [...scan.map((alert) => alert.rule?.security_severity_level), ...dependabot.map((alert) => alert.security_advisory?.severity)]
-      .reduce((sum, value) => sum + ({ critical: 35, high: 24, medium: 12, low: 4 }[value ?? "low"] ?? 1), 0);
+      .reduce((sum, value) => sum + (SEVERITY_WEIGHTS[value ?? "low"] ?? 1), 0);
     const enabled = Number(security.codeScanningEnabled) * 25 + Number(security.dependabotEnabled) * 20 + Number(security.sbomPackages.length > 0) * 20 + Number(security.checks.length > 0) * 10;
     return clamp(enabled - severity);
   });
@@ -128,10 +153,14 @@ export const rule2_13GivingBackScore: ScoreRule = (data) => {
   return score("2.13", "Giving-back score", weightedAverage([[saturatingScore(data.search.prsMergedExternal, 0.08), 0.35], [saturatingScore(externalIssues, 0.12), 0.2], [saturatingScore(data.graphql.repositoriesContributedToCount, 0.1), 0.25], [saturatingScore(data.graphql.sponsoringCount, 0.2), 0.2]]), "Cross-repository merged PRs, third-party issues, contributed repositories, and sponsoring.", "Search + GraphQL", { externalIssues, externalMergedPrs: data.search.prsMergedExternal, contributedRepositories: data.graphql.repositoriesContributedToCount });
 };
 
+// Reuse the active-day count computed in rule2_2; here we need activeRatio for rule2_14 only.
+// Both rules run independently so we compute it directly (single filter pass).
 export const rule2_14LongevityScore: ScoreRule = (data) => {
   const accountYears = daysBetween(data.user.created_at, data.now) / 365.25;
   const activeYears = data.graphql.contributionYears.length;
-  const activeRatio = ratio(data.graphql.calendar.filter((day) => day.contributionCount > 0).length, data.graphql.calendar.length);
+  let activeDays = 0;
+  for (const day of data.graphql.calendar) if (day.contributionCount > 0) activeDays++;
+  const activeRatio = ratio(activeDays, data.graphql.calendar.length);
   return score("2.14", "Longevity score", weightedAverage([[saturatingScore(accountYears, 0.22), 0.4], [saturatingScore(activeYears, 0.45), 0.3], [activeRatio * 100, 0.3]]), "Log-scaled account age, active years, and consistency.", "User profile + contributionsCollection", { accountYears, activeYears, activeRatio });
 };
 

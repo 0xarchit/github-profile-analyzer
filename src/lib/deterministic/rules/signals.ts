@@ -20,8 +20,17 @@ import {
 
 type SignalRule = (data: EngineData) => SignalResult;
 
-const allCommits = (data: EngineData) =>
-  Object.entries(data.commits).flatMap(([repository, commits]) => commits.map((commit) => ({ repository, commit })));
+// WeakMap memoizes allCommits so rules 3.4, 3.5, 3.7, 3.35 each share one flatMap.
+const allCommitsCache = new WeakMap<EngineData, Array<{ repository: string; commit: EngineData["commits"][string][number] }>>();
+const allCommits = (data: EngineData) => {
+  if (!allCommitsCache.has(data)) {
+    allCommitsCache.set(
+      data,
+      Object.entries(data.commits).flatMap(([repository, commits]) => commits.map((commit) => ({ repository, commit }))),
+    );
+  }
+  return allCommitsCache.get(data)!;
+};
 
 const punchBuckets = (data: EngineData) => {
   const buckets = Array.from({ length: 168 }, () => 0);
@@ -43,13 +52,22 @@ const sampledSignal = <T>(
   cost: "moderate" | "expensive" = "moderate",
 ) => signal(withStatus(id, name, "sampled", value, description, source, cost, caveat, sampleSize), flagged);
 
+// WeakMap memoizes rollingBursts so rules 3.2 and 3.3 each share one O(n log n + n) computation.
+const rollingBurstsCache = new WeakMap<EngineData, Array<{ date: string; count: number; rolling7: number; z: number }>>();
 const rollingBursts = (data: EngineData) => {
-  const values = [...data.graphql.calendar].sort((a, b) => a.date.localeCompare(b.date));
-  const rolling = values.map((_, index) => values.slice(Math.max(0, index - 6), index + 1).reduce((sum, day) => sum + day.contributionCount, 0));
-  const average = mean(rolling);
-  const deviation = Math.sqrt(mean(rolling.map((value) => (value - average) ** 2)));
-  return values.map((day, index) => ({ date: day.date, count: day.contributionCount, rolling7: rolling[index]!, z: deviation ? (rolling[index]! - average) / deviation : 0 }))
-    .filter((item) => item.z > 3);
+  if (!rollingBurstsCache.has(data)) {
+    const values = [...data.graphql.calendar].sort((a, b) => a.date.localeCompare(b.date));
+    const rolling = values.map((_, index) => values.slice(Math.max(0, index - 6), index + 1).reduce((sum, day) => sum + day.contributionCount, 0));
+    const average = mean(rolling);
+    const deviation = Math.sqrt(mean(rolling.map((value) => (value - average) ** 2)));
+    rollingBurstsCache.set(
+      data,
+      values
+        .map((day, index) => ({ date: day.date, count: day.contributionCount, rolling7: rolling[index]!, z: deviation ? (rolling[index]! - average) / deviation : 0 }))
+        .filter((item) => item.z > 3),
+    );
+  }
+  return rollingBurstsCache.get(data)!;
 };
 
 export const rule3_1CommitHourEntropy: SignalRule = (data) => {
@@ -84,8 +102,12 @@ export const rule3_4TimestampRegularity: SignalRule = (data) => {
     const date = commit.commit.author?.date;
     if (!date) continue;
     const key = `${repository}:${date.slice(0, 10)}`;
-    groups.set(key, [...(groups.get(key) ?? []), new Date(date).getTime()]);
+    // Mutable push: O(1) per insertion instead of spread-append O(n).
+    let arr = groups.get(key);
+    if (!arr) { arr = []; groups.set(key, arr); }
+    arr.push(new Date(date).getTime());
   }
+  const commits = allCommits(data);
   const candidates = [...groups.entries()].flatMap(([group, values]) => {
     if (values.length < 4) return [];
     values.sort((a, b) => a - b);
@@ -93,7 +115,7 @@ export const rule3_4TimestampRegularity: SignalRule = (data) => {
     return [{ group, commits: values.length, intervalCv: round(coefficientOfVariation(intervals), 4), medianSeconds: round(median(intervals), 1) }];
   });
   const flagged = candidates.filter((item) => item.intervalCv < 0.05 && item.medianSeconds > 0);
-  return sampledSignal("3.4", "Timestamp regularity", candidates, `${flagged.length} sampled repo-day groups have near-constant intervals.`, "GET /repos/{o}/{r}/commits", flagged.length > 0, allCommits(data).length, "Default-branch history can be rewritten by merge and rebase workflows.");
+  return sampledSignal("3.4", "Timestamp regularity", candidates, `${flagged.length} sampled repo-day groups have near-constant intervals.`, "GET /repos/{o}/{r}/commits", flagged.length > 0, commits.length, "Default-branch history can be rewritten by merge and rebase workflows.");
 };
 
 export const rule3_5CommitMessageDiversity: SignalRule = (data) => {
@@ -161,7 +183,9 @@ export const rule3_10MutualStarCluster: SignalRule = (data) => {
     return [{ repository, login: event.user.login, timingDays: round(daysBetween(event.starred_at, userStarredAt), 2) }];
   })).filter((item) => item.timingDays <= 7);
   const unique = new Set(mutual.map((item) => item.login)).size;
-  return signal(sampled("3.10", "Mutual star cluster", { uniqueAccounts: unique, matches: mutual }, `${unique} sampled accounts form close-in-time mutual star relationships.`, "stargazers + user starred repositories", Object.values(data.stargazers).flat().length, "Top three repositories and first 100 stargazers only; flag-only and never a verdict."), unique >= 3);
+  // Avoid flat() just for a count: use reduce over array lengths.
+  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
+  return signal(sampled("3.10", "Mutual star cluster", { uniqueAccounts: unique, matches: mutual }, `${unique} sampled accounts form close-in-time mutual star relationships.`, "stargazers + user starred repositories", totalStargazers, "Top three repositories and first 100 stargazers only; flag-only and never a verdict."), unique >= 3);
 };
 
 export const rule3_11FollowerContentCorrelation: SignalRule = (data) => {
@@ -185,10 +209,17 @@ export const rule3_13GhostRepos: SignalRule = (data) => {
   return sampledSignal("3.13", "Ghost repository detection", value, `${repos.length} sampled repositories are tiny and have at most one visible authored commit.`, "repo metadata + commits", value.ratio > 0.3 && data.topRepos.length >= 5, data.topRepos.length, "Top 10 repositories only.");
 };
 
+// Single pass over buckets using index arithmetic replaces slice().concat() intermediate arrays.
 export const rule3_14WeekendRatio: SignalRule = (data) => {
   const buckets = punchBuckets(data);
-  const weekend = buckets.slice(0, 24).concat(buckets.slice(6 * 24)).reduce((sum, value) => sum + value, 0);
-  const total = buckets.reduce((sum, value) => sum + value, 0);
+  let weekend = 0;
+  let total = 0;
+  for (let i = 0; i < buckets.length; i++) {
+    const count = buckets[i]!;
+    total += count;
+    // Weekend = Sunday (0–23) or Saturday (144–167).
+    if (i < 24 || i >= 144) weekend += count;
+  }
   return signal(ok("3.14", "Weekend vs weekday ratio", { weekend, weekday: total - weekend, weekendRatio: round(ratio(weekend, total), 4) }, `${round(ratio(weekend, total) * 100, 1)}% of sampled punch-card activity is on weekends.`, "stats/punch_card"), false);
 };
 
@@ -241,13 +272,16 @@ export const rule3_19CoordinatedStarBursts: SignalRule = (data) => {
     }
   }
   const bursts = [...buckets.entries()].filter(([, repos]) => repos.size >= 3).map(([hour, repos]) => ({ hour, repositories: [...repos] }));
-  return signal(sampled("3.19", "Coordinated star bursts", bursts, `${bursts.length} sampled hour buckets contain stars across at least three repositories.`, "stargazers with star timestamps", Object.values(data.stargazers).flat().length, "Top three repos, first 100 stargazers; flag-only and never a verdict."), bursts.length > 0);
+  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
+  return signal(sampled("3.19", "Coordinated star bursts", bursts, `${bursts.length} sampled hour buckets contain stars across at least three repositories.`, "stargazers with star timestamps", totalStargazers, "Top three repos, first 100 stargazers; flag-only and never a verdict."), bursts.length > 0);
 };
 
+// for...of over the Set directly avoids spreading Set to array for filtering.
 export const rule3_20MutualFollowRatio: SignalRule = (data) => {
   const followers = new Set(data.followers.map((login) => login.toLowerCase()));
   const following = new Set(data.following.map((login) => login.toLowerCase()));
-  const mutual = [...followers].filter((login) => following.has(login));
+  const mutual: string[] = [];
+  for (const login of followers) if (following.has(login)) mutual.push(login);
   const value = { followersSampled: followers.size, followingSampled: following.size, mutual: mutual.length, ratio: round(ratio(mutual.length, Math.min(followers.size, following.size)), 4) };
   return sampledSignal("3.20", "Mutual-follow ratio", value, `${mutual.length} mutual follows in capped lists.`, "followers + following", Math.min(followers.size, following.size) >= 100 && value.ratio > 0.8, followers.size + following.size, "Each list is capped at 300 accounts.");
 };
@@ -312,8 +346,10 @@ export const rule3_27AuthoredIssueResponse: SignalRule = (data) => {
   return sampledSignal("3.27", "Authored issue first-response latency", value, `Median community response to sampled authored issues is ${value.medianHours} hours.`, "GraphQL issue batch", hours.length >= 5 && value.medianHours > 168, hours.length, "At most 25 authored issues from the first 100 search results.");
 };
 
+const MAX_REPOS_FOR_PAIRWISE = 100;
+
 export const rule3_28TopicSpam: SignalRule = (data) => {
-  const repos = data.repos.filter((repo) => repo.topics.length > 0).slice(0, 100);
+  const repos = data.repos.filter((repo) => repo.topics.length > 0).slice(0, MAX_REPOS_FOR_PAIRWISE);
   const topicSets = repos.map((repo) => new Set(repo.topics));
   const pairs: Array<{ a: string; b: string; overlap: number }> = [];
   for (let a = 0; a < repos.length; a += 1) {
@@ -326,7 +362,7 @@ export const rule3_28TopicSpam: SignalRule = (data) => {
 };
 
 export const rule3_29RepoSimilarity: SignalRule = (data) => {
-  const sampledRepos = data.repos.slice(0, 100);
+  const sampledRepos = data.repos.slice(0, MAX_REPOS_FOR_PAIRWISE);
   const tokenSets = sampledRepos.map((repo) => tokenize(`${repo.name} ${repo.description ?? ""}`));
   const pairs: Array<{ a: string; b: string; similarity: number }> = [];
   for (let a = 0; a < sampledRepos.length; a += 1) {

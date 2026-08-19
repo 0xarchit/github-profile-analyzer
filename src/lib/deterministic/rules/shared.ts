@@ -14,15 +14,45 @@ export const median = (values: number[]) => {
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 };
+
+// Internal helper: percentile on an already-sorted array (avoids re-sort).
+const sortedPercentile = (sorted: number[], p: number) =>
+  sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]!;
+
 export const percentile = (values: number[], p: number) => {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]!;
+  return sortedPercentile(sorted, p);
 };
+
+/**
+ * Sort once and return median + common percentiles in a single pass.
+ * Use this wherever multiple percentiles of the same array are needed.
+ */
+export const sortedStats = (values: number[]) => {
+  if (!values.length) return { median: 0, p25: 0, p75: 0, p90: 0 };
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const med = sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+  return {
+    median: med,
+    p25: sortedPercentile(sorted, 0.25),
+    p75: sortedPercentile(sorted, 0.75),
+    p90: sortedPercentile(sorted, 0.9),
+  };
+};
+
+// Welford online algorithm: single pass computes mean + variance without a temp array.
 export const standardDeviation = (values: number[]) => {
   if (values.length < 2) return 0;
-  const average = mean(values);
-  return Math.sqrt(mean(values.map((value) => (value - average) ** 2)));
+  let m = 0;
+  let s = 0;
+  for (let i = 0; i < values.length; i++) {
+    const delta = values[i]! - m;
+    m += delta / (i + 1);
+    s += delta * (values[i]! - m);
+  }
+  return Math.sqrt(s / (values.length - 1 > 0 ? values.length : 1));
 };
 export const coefficientOfVariation = (values: number[]) => {
   const average = mean(values);
@@ -51,12 +81,14 @@ export const entropy = (values: number[]) => {
 };
 export const tokenize = (value: string) =>
   new Set(value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 1));
+
+// Jaccard without allocating a union Set: |union| = |a| + |b| - |intersection|
 export const jaccard = (a: Set<string>, b: Set<string>) => {
-  const union = new Set([...a, ...b]);
-  if (!union.size) return 0;
+  if (!a.size && !b.size) return 0;
   let intersection = 0;
   for (const item of a) if (b.has(item)) intersection += 1;
-  return intersection / union.size;
+  const unionSize = a.size + b.size - intersection;
+  return unionSize === 0 ? 0 : intersection / unionSize;
 };
 export const ok = <T>(
   id: string,

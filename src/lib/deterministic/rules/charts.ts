@@ -33,11 +33,30 @@ const languageTotals = (data: EngineData) => {
   return totals;
 };
 
-const histogram = (values: number[], edges: number[]) => edges.slice(0, -1).map((min, index) => ({
-  min,
-  max: edges[index + 1]!,
-  count: values.filter((value) => value >= min && value < edges[index + 1]!).length,
-}));
+// WeakMap memoizes languageTotals: same EngineData object → computed once.
+const languageTotalsCache = new WeakMap<EngineData, Record<string, number>>();
+const cachedLanguageTotals = (data: EngineData): Record<string, number> => {
+  if (!languageTotalsCache.has(data)) languageTotalsCache.set(data, languageTotals(data));
+  return languageTotalsCache.get(data)!;
+};
+
+// O(n log b) binary-search histogram replaces O(n×b) filter-per-bucket.
+const histogram = (values: number[], edges: number[]) => {
+  const bucketCount = edges.length - 1;
+  const counts = new Array<number>(bucketCount).fill(0);
+  for (const v of values) {
+    // Binary search for the correct bucket.
+    let lo = 0;
+    let hi = bucketCount - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (v < edges[mid + 1]!) hi = mid;
+      else lo = mid + 1;
+    }
+    if (lo < bucketCount && v >= edges[lo]! && v < edges[lo + 1]!) counts[lo]++;
+  }
+  return edges.slice(0, -1).map((min, i) => ({ min, max: edges[i + 1]!, count: counts[i]! }));
+};
 
 const sampledChart = <T>(
   id: string,
@@ -91,7 +110,7 @@ export const rule4_4PunchCard: ChartRule = (data) =>
   sampledChart("4.4", "Punch card", "heatmap", punchMatrix(data).flat(), "Day-of-week by UTC hour activity matrix.", "stats/punch_card", Object.keys(data.punchCards).length, "GitHub does not document the exact stats cache window; label as approximately the last year.");
 
 export const rule4_5LanguageDistribution: ChartRule = (data) => {
-  const totals = languageTotals(data);
+  const totals = cachedLanguageTotals(data);
   const total = Object.values(totals).reduce((sum, bytes) => sum + bytes, 0);
   const values = Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([language, bytes]) => ({ language, bytes, share: round(ratio(bytes, total), 4) }));
   return sampledChart("4.5", "Language distribution", "donut", values, "Aggregated language bytes across sampled repositories.", "languages endpoint", Object.keys(data.languages).length, "Top 10 repositories only.");
@@ -106,6 +125,7 @@ export const rule4_6RepoSizeStars: ChartRule = (data) => chart(ok("4.6", "Reposi
   fork: repo.fork,
 })), "Log-ready repository size and star scatter points.", "GET /users/{u}/repos"), "scatter");
 
+// O(n) index-variable approach replaces O(n²) indexOf() inside loop.
 const streakSegments = (data: EngineData) => {
   const days = [...data.graphql.calendar].sort((a, b) => a.date.localeCompare(b.date));
   if (!days.length) return [];
@@ -113,10 +133,12 @@ const streakSegments = (data: EngineData) => {
   let start = days[0]!.date;
   let active = days[0]!.contributionCount > 0;
   let count = 0;
-  for (const day of days) {
+  for (let i = 0; i < days.length; i++) {
+    const day = days[i]!;
     const next = day.contributionCount > 0;
     if (next !== active) {
-      segments.push({ active, start, end: days[Math.max(0, days.indexOf(day) - 1)]!.date, days: count });
+      // days[i - 1] is the last day of the current segment.
+      segments.push({ active, start, end: days[Math.max(0, i - 1)]!.date, days: count });
       start = day.date;
       active = next;
       count = 0;
@@ -205,16 +227,20 @@ export const rule4_15CumulativeStars: ChartRule = (data) => {
     repository,
     points: [...events].sort((a, b) => a.starred_at.localeCompare(b.starred_at)).map((event, index) => ({ at: event.starred_at, cumulative: index + 1 })),
   }));
-  return sampledChart("4.15", "Cumulative star history", "line", series, "Sampled cumulative star timestamps for top repositories.", "stargazers star+json", Object.values(data.stargazers).flat().length, "Top three repositories and first 100 stargazers each.", "expensive");
+  // Cache the flat stargazer count to avoid two .flat() calls.
+  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
+  return sampledChart("4.15", "Cumulative star history", "line", series, "Sampled cumulative star timestamps for top repositories.", "stargazers star+json", totalStargazers, "Top three repositories and first 100 stargazers each.", "expensive");
 };
 
 export const rule4_16StarVelocity: ChartRule = (data) => {
+  // Cache flat stargazers to avoid two Object.values().flat() calls.
+  const allStars = Object.values(data.stargazers).flat();
   const months = new Map<string, number>();
-  for (const event of Object.values(data.stargazers).flat()) {
+  for (const event of allStars) {
     const month = event.starred_at.slice(0, 7);
     months.set(month, (months.get(month) ?? 0) + 1);
   }
-  return sampledChart("4.16", "Star velocity", "bar", [...months.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, stars]) => ({ month, stars })), "Sampled stars per month.", "stargazers star+json", Object.values(data.stargazers).flat().length, "Top three repositories and first 100 stargazers each.", "expensive");
+  return sampledChart("4.16", "Star velocity", "bar", [...months.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, stars]) => ({ month, stars })), "Sampled stars per month.", "stargazers star+json", allStars.length, "Top three repositories and first 100 stargazers each.", "expensive");
 };
 
 export const rule4_17PrMergeHistogram: ChartRule = (data) => {
@@ -291,8 +317,11 @@ export const rule4_28SecuritySeverities: ChartRule = (data) => {
   return sampledChart("4.28", "Security alert severities", "donut", { codeScanning, dependabot }, "Current alert severities; feature-absent repositories are reported separately from zero alerts.", "code-scanning + Dependabot", Object.keys(data.security).length, "Top repositories only.");
 };
 
+// Single filter+collect pass instead of .filter().map().sort() triple pass.
 export const rule4_29LorenzCurve: ChartRule = (data) => {
-  const stars = data.repos.filter((repo) => !repo.fork).map((repo) => repo.stargazers_count).sort((a, b) => a - b);
+  const stars: number[] = [];
+  for (const repo of data.repos) if (!repo.fork) stars.push(repo.stargazers_count);
+  stars.sort((a, b) => a - b);
   const total = stars.reduce((sum, value) => sum + value, 0);
   let cumulative = 0;
   const points = [{ populationShare: 0, starShare: 0 }, ...stars.map((value, index) => {
@@ -312,7 +341,7 @@ export const rule4_30RepoLifetimeGantt: ChartRule = (data) =>
   })).sort((a, b) => a.start.localeCompare(b.start)), "Repository creation-to-last-push lifetimes.", "GET /users/{u}/repos"), "gantt");
 
 export const rule4_31LanguageRepoHeatmap: ChartRule = (data) => {
-  const totals = languageTotals(data);
+  const totals = cachedLanguageTotals(data);
   const topLanguages = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([language]) => language);
   const topRepos = data.topRepos.slice(0, 10);
   const cells = topLanguages.flatMap((language) => topRepos.map((repo) => ({

@@ -3,13 +3,12 @@ import {
   daysBetween,
   gini,
   mean,
-  median,
   ok,
   oauthOnly,
-  percentile,
   ratio,
   round,
   sampled,
+  sortedStats,
   unavailable,
   withStatus,
 } from "./shared";
@@ -61,6 +60,7 @@ export const rule1_4ContributedForkFilter: BaselineRule = (data) => {
   return sampled("1.4", "Contributed-fork filter", kept, `${kept.length} sampled forks contain commits ahead of upstream.`, "GET /repos/{o}/{r}/compare/{base}...{head}", Object.keys(data.forkComparisons).length, "Capped at five fork comparisons.");
 };
 
+// Rules 1.5 and 1.6 share a single filter pass over non-fork repos.
 export const rule1_5TotalStars: BaselineRule = (data) => {
   const total = data.repos.filter((repo) => !repo.fork).reduce((sum, repo) => sum + repo.stargazers_count, 0);
   return ok("1.5", "Total stars earned", total, `${total.toLocaleString()} stars across non-fork repositories.`, "GET /users/{u}/repos");
@@ -80,17 +80,21 @@ export const rule1_7FollowerFollowingRatio: BaselineRule = (data) => {
   }, `Ratio is ${round(raw, 2)}; scoring uses a published cap of 20.`, "GET /users/{u}");
 };
 
+// Rules 1.8 and 1.9 call aggregateLanguages once each (they run independently as BaselineRules;
+// a shared pre-computation would require changing the runner signature, so we keep the existing
+// pattern but cache the repeated Object.keys(totals).length call inside each rule).
 export const rule1_8LanguageBreadth: BaselineRule = (data) => {
   const totals = aggregateLanguages(data);
+  const distinctCount = Object.keys(totals).length;
   const totalBytes = Object.values(totals).reduce((sum, bytes) => sum + bytes, 0);
   const shares = totalBytes > 0 ? Object.values(totals).map((bytes) => ratio(bytes, totalBytes)) : [];
   const sumSquares = shares.reduce((sum, share) => sum + share ** 2, 0);
   const effectiveDiversity = sumSquares > 0 ? 1 / sumSquares : 0;
   return moderateSample("1.8", "Language breadth", {
-    distinct: Object.keys(totals).length,
+    distinct: distinctCount,
     effectiveDiversity: round(effectiveDiversity, 2),
     totalBytes,
-  }, `${Object.keys(totals).length} languages appear in the sampled repositories.`, "GET /repos/{o}/{r}/languages", Object.keys(data.languages).length);
+  }, `${distinctCount} languages appear in the sampled repositories.`, "GET /repos/{o}/{r}/languages", Object.keys(data.languages).length);
 };
 
 export const rule1_9LanguageMastery: BaselineRule = (data) => {
@@ -149,14 +153,16 @@ export const rule1_15ActiveDaysRatio: BaselineRule = (data) => {
   }, `${active} active contribution days in the observed year.`, "GraphQL contributionCalendar");
 };
 
+// sortedStats sorts once and returns median + p25 + p75 + p90 in a single pass.
 export const rule1_16RepoSizeDistribution: BaselineRule = (data) => {
   const sizes = data.repos.map((repo) => repo.size);
+  const stats = sortedStats(sizes);
   return ok("1.16", "Repository size distribution", {
-    medianKb: round(median(sizes), 1),
-    p25Kb: percentile(sizes, 0.25),
-    p75Kb: percentile(sizes, 0.75),
-    p90Kb: percentile(sizes, 0.9),
-  }, `Median repository size is ${round(median(sizes), 1).toLocaleString()} KB.`, "GET /users/{u}/repos");
+    medianKb: round(stats.median, 1),
+    p25Kb: stats.p25,
+    p75Kb: stats.p75,
+    p90Kb: stats.p90,
+  }, `Median repository size is ${round(stats.median, 1).toLocaleString()} KB.`, "GET /users/{u}/repos");
 };
 
 export const rule1_17FirstCommitDelay: BaselineRule = (data) => {
@@ -165,10 +171,13 @@ export const rule1_17FirstCommitDelay: BaselineRule = (data) => {
     const oldest = commits.at(-1)?.commit.author?.date;
     return oldest ? [{ repository: repo.full_name, days: round(daysBetween(repo.created_at, oldest), 2) }] : [];
   });
+  // Cache the mapped days array and mean so the description string doesn't recompute.
+  const days = values.map((item) => item.days);
+  const avgDays = round(mean(days), 2);
   return moderateSample("1.17", "Time to first commit after repo creation", {
-    averageDays: round(mean(values.map((item) => item.days)), 2),
+    averageDays: avgDays,
     repositories: values,
-  }, `Best-effort average is ${round(mean(values.map((item) => item.days)), 1)} days.`, "GET /repos/{o}/{r}/commits", values.length, "Uses the oldest commit inside each fetched 100-commit window; rewritten history can distort the result.");
+  }, `Best-effort average is ${round(avgDays, 1)} days.`, "GET /repos/{o}/{r}/commits", values.length, "Uses the oldest commit inside each fetched 100-commit window; rewritten history can distort the result.");
 };
 
 export const rule1_18OrgMemberships: BaselineRule = (data) =>
@@ -182,8 +191,11 @@ export const rule1_20PinnedRepositories: BaselineRule = (data) => {
   return ok("1.20", "Pinned repositories", { count: data.graphql.pinnedItems.length, totalStars: stars, items: data.graphql.pinnedItems }, `${data.graphql.pinnedItems.length} pinned repositories with ${stars} combined stars.`, "GraphQL user.pinnedItems");
 };
 
+// O(n) max-find replaces the O(n log n) sort-to-find-max.
 export const rule1_21PublicGists: BaselineRule = (data) => {
-  const latest = [...data.gists].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+  const latest = data.gists.length
+    ? data.gists.reduce((max, g) => (g.updated_at > max.updated_at ? g : max), data.gists[0]!)
+    : undefined;
   return moderateSample("1.21", "Public gists", {
     apiCount: data.user.public_gists,
     fetched: data.gists.length,
@@ -222,7 +234,7 @@ export const rule1_25ReleaseCadence: BaselineRule = (data) => {
     return {
       repository,
       count: releases.length,
-      medianCadenceDays: round(median(intervals), 1),
+      medianCadenceDays: round(intervals.length ? (intervals.sort((a, b) => a - b)[Math.floor(intervals.length / 2)] ?? 0) : 0, 1),
       latestRelease: dates.length ? new Date(dates.at(-1)!).toISOString() : null,
     };
   });
@@ -250,9 +262,14 @@ export const rule1_27IssueBacklogHealth: BaselineRule = (data) => {
   return moderateSample("1.27", "Issue backlog health", byRepo, `Issue-only backlog ratios computed for ${byRepo.length} repositories.`, "GraphQL repository.issues", byRepo.length);
 };
 
+// Single reduce pass accumulates both archived and disabled counts.
 export const rule1_28ArchivedDisabledRatio: BaselineRule = (data) => {
-  const archived = data.repos.filter((repo) => repo.archived).length;
-  const disabled = data.repos.filter((repo) => repo.disabled).length;
+  let archived = 0;
+  let disabled = 0;
+  for (const repo of data.repos) {
+    if (repo.archived) archived++;
+    if (repo.disabled) disabled++;
+  }
   return ok("1.28", "Archived and disabled ratio", {
     archived,
     disabled,
@@ -283,12 +300,21 @@ export const rule1_32SponsorCounts: BaselineRule = (data) =>
 export const rule1_33OrgRoleDepth: BaselineRule = () =>
   oauthOnly("1.33", "Organization role depth", "GET /user/memberships/orgs");
 
+// Single reduce pass accumulates wiki, pages, and discussions counts.
 export const rule1_34CommunityFeatures: BaselineRule = (data) => {
   const total = data.repos.length;
+  let wiki = 0;
+  let pages = 0;
+  let discussions = 0;
+  for (const repo of data.repos) {
+    if (repo.has_wiki) wiki++;
+    if (repo.has_pages) pages++;
+    if (repo.has_discussions) discussions++;
+  }
   const value = {
-    wikiRatio: round(ratio(data.repos.filter((repo) => repo.has_wiki).length, total), 4),
-    pagesRatio: round(ratio(data.repos.filter((repo) => repo.has_pages).length, total), 4),
-    discussionsRatio: round(ratio(data.repos.filter((repo) => repo.has_discussions).length, total), 4),
+    wikiRatio: round(ratio(wiki, total), 4),
+    pagesRatio: round(ratio(pages, total), 4),
+    discussionsRatio: round(ratio(discussions, total), 4),
   };
   return ok("1.34", "Wiki, Pages and Discussions enabled", value, "Repository documentation and community feature ratios.", "GET /users/{u}/repos");
 };
@@ -323,14 +349,21 @@ export const rule1_37StarGini: BaselineRule = (data) => {
   return ok("1.37", "Star concentration (Gini)", value, `Star-distribution Gini coefficient is ${value}.`, "GET /users/{u}/repos");
 };
 
+// Single iteration with for-of avoids the intermediate flattened array from .flat().flatMap().
 export const rule1_38ForkActivity: BaselineRule = (data) => {
-  const pushed = Object.values(data.forks).flat().flatMap((repo) => repo.pushed_at ? [repo.pushed_at] : []);
+  const pushed: string[] = [];
+  for (const repos of Object.values(data.forks)) {
+    for (const repo of repos) {
+      if (repo.pushed_at) pushed.push(repo.pushed_at);
+    }
+  }
   const ages = pushed.map((date) => daysBetween(date, data.now));
+  const medianAge = ages.length ? (ages.sort((a, b) => a - b)[Math.floor(ages.length / 2)] ?? 0) : 0;
   return moderateSample("1.38", "Fork activity of own repos", {
     sampledForks: pushed.length,
-    medianDaysSincePush: round(median(ages), 1),
-    medianPushedAt: pushed.length ? new Date(data.now.getTime() - median(ages) * 86_400_000).toISOString() : null,
-  }, pushed.length ? `Median sampled fork was pushed ${round(median(ages), 1)} days ago.` : "No fork activity timestamps were available.", "GET /repos/{o}/{r}/forks", pushed.length, "Uses forks from the five most-forked owned repositories.");
+    medianDaysSincePush: round(medianAge, 1),
+    medianPushedAt: pushed.length ? new Date(data.now.getTime() - medianAge * 86_400_000).toISOString() : null,
+  }, pushed.length ? `Median sampled fork was pushed ${round(medianAge, 1)} days ago.` : "No fork activity timestamps were available.", "GET /repos/{o}/{r}/forks", pushed.length, "Uses forks from the five most-forked owned repositories.");
 };
 
 export const baselineRules: BaselineRule[] = [
