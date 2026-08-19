@@ -87,30 +87,56 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
   };
 }
 
-const graphqlString = (value: string) => JSON.stringify(value);
-
 export async function fetchRepoIssueSummaries(client: GitHubClient, repos: GitHubRepo[]): Promise<Record<string, RepoIssueSummary>> {
   if (!repos.length) return {};
-  const fields = repos.map((repo, index) => `
-    r${index}: repository(owner: ${graphqlString(repo.owner.login)}, name: ${graphqlString(repo.name)}) {
+  const variableDecls: string[] = [];
+  const variables: Record<string, unknown> = {};
+  const fields = repos
+    .map((repo, index) => {
+      variableDecls.push(`$owner${index}: String!`, `$name${index}: String!`);
+      variables[`owner${index}`] = repo.owner.login;
+      variables[`name${index}`] = repo.name;
+      return `
+    r${index}: repository(owner: $owner${index}, name: $name${index}) {
       open: issues(states: OPEN) { totalCount }
       closed: issues(states: CLOSED) { totalCount }
       discussions { totalCount }
       recent: issues(first: 25, orderBy: {field: CREATED_AT, direction: DESC}) {
         nodes { createdAt comments(first: 1) { nodes { createdAt } } }
       }
-    }`).join("\n");
+    }`;
+    })
+    .join("\n");
+
+  const query = `query RepoIssueSummaries(${variableDecls.join(", ")}) { ${fields} }`;
   const response = await client.graphql<Record<string, {
     open: { totalCount: number };
     closed: { totalCount: number };
     discussions: { totalCount: number };
     recent: { nodes: Array<{ createdAt: string; comments: { nodes: Array<{ createdAt: string }> } }> };
-  } | null>>(`query { ${fields} }`, {}, "repository issue summary batch");
-  return Object.fromEntries(repos.map((repo, index) => {
+  } | null>>(query, variables, "repository issue summary batch");
+
+  const entries: Array<[string, RepoIssueSummary]> = [];
+  repos.forEach((repo, index) => {
     const item = response[`r${index}`];
-    const responseHours = item?.recent.nodes.flatMap((issue) => issue.comments.nodes[0] ? [hoursBetween(issue.createdAt, issue.comments.nodes[0].createdAt)] : []) ?? [];
-    return [repo.full_name, { open: item?.open.totalCount ?? 0, closed: item?.closed.totalCount ?? 0, discussions: item?.discussions.totalCount ?? 0, responseHours }];
-  }));
+    if (!item) return; // Skip inaccessible or null repository aliases
+    const responseHours =
+      item.recent?.nodes?.flatMap((issue) =>
+        issue.comments?.nodes?.[0]
+          ? [hoursBetween(issue.createdAt, issue.comments.nodes[0].createdAt)]
+          : [],
+      ) ?? [];
+    entries.push([
+      repo.full_name,
+      {
+        open: item.open?.totalCount ?? 0,
+        closed: item.closed?.totalCount ?? 0,
+        discussions: item.discussions?.totalCount ?? 0,
+        responseHours,
+      },
+    ]);
+  });
+  return Object.fromEntries(entries);
 }
 
 export async function fetchAuthoredIssueResponseHours(
@@ -119,18 +145,30 @@ export async function fetchAuthoredIssueResponseHours(
 ): Promise<number[]> {
   const sampled = items.slice(0, 25);
   if (!sampled.length) return [];
-  const fields = sampled.map((item, index) => {
-    const [owner, repo] = item.repository.split("/");
-    return `i${index}: repository(owner: ${graphqlString(owner ?? "")}, name: ${graphqlString(repo ?? "")}) {
-      issue(number: ${item.number}) { createdAt comments(first: 1) { nodes { createdAt } } }
+  const variableDecls: string[] = [];
+  const variables: Record<string, unknown> = {};
+  const fields = sampled
+    .map((item, index) => {
+      const [owner, repo] = item.repository.split("/");
+      variableDecls.push(`$owner${index}: String!`, `$name${index}: String!`, `$num${index}: Int!`);
+      variables[`owner${index}`] = owner ?? "";
+      variables[`name${index}`] = repo ?? "";
+      variables[`num${index}`] = item.number;
+      return `i${index}: repository(owner: $owner${index}, name: $name${index}) {
+      issue(number: $num${index}) { createdAt comments(first: 1) { nodes { createdAt } } }
     }`;
-  }).join("\n");
+    })
+    .join("\n");
+
+  const query = `query AuthoredIssueResponses(${variableDecls.join(", ")}) { ${fields} }`;
   const response = await client.graphql<Record<string, { issue: null | { createdAt: string; comments: { nodes: Array<{ createdAt: string }> } } } | null>>(
-    `query { ${fields} }`, {}, "authored issue response batch",
+    query,
+    variables,
+    "authored issue response batch",
   );
   return sampled.flatMap((_item, index) => {
     const issue = response[`i${index}`]?.issue;
-    const comment = issue?.comments.nodes[0];
+    const comment = issue?.comments?.nodes?.[0];
     return issue && comment ? [hoursBetween(issue.createdAt, comment.createdAt)] : [];
   });
 }

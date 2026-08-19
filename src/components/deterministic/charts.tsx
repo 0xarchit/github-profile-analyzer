@@ -7,10 +7,14 @@ import type { RuleResult } from "@/lib/deterministic";
    ================================================================ */
 
 export function ContributionHeatmap({ days }: { days: Array<{ date: string; count: number; weekday: number; week: number }> }) {
+  if (!days || !days.length) {
+    return <div className="text-xs text-gray-400 py-4">No contribution activity recorded</div>;
+  }
   const maxCount = Math.max(1, ...days.map((d) => d.count));
   const cellSize = 11;
   const gap = 2;
-  const weeks = Math.max(...days.map((d) => d.week)) + 1;
+  const maxWeek = Math.max(0, ...days.map((d) => d.week));
+  const weeks = maxWeek + 1;
   return (
     <div className="overflow-x-auto">
       <svg width={weeks * (cellSize + gap) + 30} height={7 * (cellSize + gap) + 20} className="text-[10px]">
@@ -56,11 +60,12 @@ export function PunchCard({ cells }: { cells: Array<{ day: number; hour: number;
 }
 
 function buildDonutPaths(items: Array<{ share: number }>, cx: number, cy: number, r: number, innerR: number) {
-  const total = items.reduce((s, i) => s + i.share, 0);
+  const rawTotal = items.reduce((s, i) => s + i.share, 0);
+  const total = rawTotal > 0 ? rawTotal : 1;
   const paths: string[] = [];
   let cumAngle = -Math.PI / 2;
   for (const item of items) {
-    const angle = (item.share / total) * Math.PI * 2;
+    const angle = ((rawTotal > 0 ? item.share : 1 / Math.max(1, items.length)) / total) * Math.PI * 2;
     const startAngle = cumAngle;
     cumAngle += angle;
     const endAngle = cumAngle;
@@ -475,8 +480,9 @@ export function StarHistory({ data }: { data: Array<{ repository: string; points
   const maxStars = Math.max(1, ...data.flatMap((d) => d.points.map((p) => p.cumulative)));
   const allPoints = data.flatMap((d) => d.points);
   if (!allPoints.length) return null;
-  const minTime = new Date(allPoints[0].at).getTime();
-  const maxTime = new Date(allPoints[allPoints.length - 1].at).getTime();
+  const timestamps = allPoints.map((p) => new Date(p.at).getTime());
+  const minTime = Math.min(...timestamps);
+  const maxTime = Math.max(...timestamps);
   const range = maxTime - minTime || 1;
   const w = 500, h = 150, pad = 30;
   const colors = ["#06b6d4", "#facc15", "#ec4899", "#22c55e", "#a855f7"];

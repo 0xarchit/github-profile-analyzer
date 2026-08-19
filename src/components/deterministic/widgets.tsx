@@ -13,8 +13,8 @@ export function ScoreCard({ label, value, weight, grade }: { label: string; valu
       </div>
       <div className="text-xl font-heading text-black">{typeof value === "number" ? value.toFixed(1) : value}</div>
       <div className="flex items-center gap-2 mt-1">
-        <div className="flex-1 h-1 rounded-full" style={{ background: "#e8e6d8" }}>
-          <div className="h-full rounded-full bg-cyan-700" style={{ width: `${Math.min(100, value)}%` }} />
+        <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(0,0,0,0.12)" }}>
+          <div className="h-full rounded-full bg-cyan-700" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
         </div>
         <span className="text-[9px] text-gray-400">{(weight * 100).toFixed(0)}%</span>
       </div>

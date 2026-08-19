@@ -132,13 +132,25 @@ export const rule3_8ForkOnlyContributor: SignalRule = (data) => {
 };
 
 export const rule3_9RepoCreationClustering: SignalRule = (data) => {
-  const dates = data.repos.map((repo) => ({ repository: repo.full_name, time: new Date(repo.created_at).getTime() })).sort((a, b) => a.time - b.time);
+  const dates = data.repos
+    .map((repo) => ({ repository: repo.full_name, time: new Date(repo.created_at).getTime() }))
+    .sort((a, b) => a.time - b.time);
   let maxCluster: typeof dates = [];
-  for (let index = 0; index < dates.length; index += 1) {
-    const cluster = dates.filter((item) => item.time >= dates[index]!.time && item.time - dates[index]!.time <= 3 * 86_400_000);
-    if (cluster.length > maxCluster.length) maxCluster = cluster;
+  let left = 0;
+  const windowMs = 3 * 86_400_000;
+  for (let right = 0; right < dates.length; right += 1) {
+    while (dates[right]!.time - dates[left]!.time > windowMs) {
+      left += 1;
+    }
+    const currentLen = right - left + 1;
+    if (currentLen > maxCluster.length) {
+      maxCluster = dates.slice(left, right + 1);
+    }
   }
-  return signal(ok("3.9", "Repository creation clustering", { maxThreeDayCluster: maxCluster.length, repositories: maxCluster.map((item) => item.repository) }, `Largest three-day creation cluster contains ${maxCluster.length} repositories.`, "GET /users/{u}/repos"), maxCluster.length >= 10);
+  return signal(
+    ok("3.9", "Repository creation clustering", { maxThreeDayCluster: maxCluster.length, repositories: maxCluster.map((item) => item.repository) }, `Largest three-day creation cluster contains ${maxCluster.length} repositories.`, "GET /users/{u}/repos"),
+    maxCluster.length >= 10,
+  );
 };
 
 export const rule3_10MutualStarCluster: SignalRule = (data) => {
@@ -301,22 +313,27 @@ export const rule3_27AuthoredIssueResponse: SignalRule = (data) => {
 };
 
 export const rule3_28TopicSpam: SignalRule = (data) => {
-  const repos = data.repos.filter((repo) => repo.topics.length > 0);
+  const repos = data.repos.filter((repo) => repo.topics.length > 0).slice(0, 100);
+  const topicSets = repos.map((repo) => new Set(repo.topics));
   const pairs: Array<{ a: string; b: string; overlap: number }> = [];
-  for (let a = 0; a < repos.length; a += 1) for (let b = a + 1; b < repos.length; b += 1) {
-    const overlap = jaccard(new Set(repos[a]!.topics), new Set(repos[b]!.topics));
-    if (overlap >= 0.8) pairs.push({ a: repos[a]!.full_name, b: repos[b]!.full_name, overlap: round(overlap, 3) });
+  for (let a = 0; a < repos.length; a += 1) {
+    for (let b = a + 1; b < repos.length; b += 1) {
+      const overlap = jaccard(topicSets[a]!, topicSets[b]!);
+      if (overlap >= 0.8) pairs.push({ a: repos[a]!.full_name, b: repos[b]!.full_name, overlap: round(overlap, 3) });
+    }
   }
   return signal(ok("3.28", "Topic and keyword overlap", pairs.slice(0, 50), `${pairs.length} repository pairs share at least 80% of their topic sets.`, "GET /users/{u}/repos"), pairs.length >= 5);
 };
 
 export const rule3_29RepoSimilarity: SignalRule = (data) => {
+  const sampledRepos = data.repos.slice(0, 100);
+  const tokenSets = sampledRepos.map((repo) => tokenize(`${repo.name} ${repo.description ?? ""}`));
   const pairs: Array<{ a: string; b: string; similarity: number }> = [];
-  for (let a = 0; a < data.repos.length; a += 1) for (let b = a + 1; b < data.repos.length; b += 1) {
-    const first = data.repos[a]!;
-    const second = data.repos[b]!;
-    const similarity = jaccard(tokenize(`${first.name} ${first.description ?? ""}`), tokenize(`${second.name} ${second.description ?? ""}`));
-    if (similarity >= 0.8) pairs.push({ a: first.full_name, b: second.full_name, similarity: round(similarity, 3) });
+  for (let a = 0; a < sampledRepos.length; a += 1) {
+    for (let b = a + 1; b < sampledRepos.length; b += 1) {
+      const similarity = jaccard(tokenSets[a]!, tokenSets[b]!);
+      if (similarity >= 0.8) pairs.push({ a: sampledRepos[a]!.full_name, b: sampledRepos[b]!.full_name, similarity: round(similarity, 3) });
+    }
   }
   return signal(ok("3.29", "Repository name and description similarity", pairs.slice(0, 50), `${pairs.length} near-duplicate repository pairs were found by token Jaccard similarity.`, "GET /users/{u}/repos"), pairs.length >= 5);
 };

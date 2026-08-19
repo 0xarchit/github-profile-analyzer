@@ -41,6 +41,7 @@ export interface RuleResult<T = unknown> {
   sampleSize?: number;
   caveat?: string;
   confidence?: number;
+  details?: Record<string, unknown>;
   freshness?: {
     score: number;
     label: "live" | "recent" | "historical" | "snapshot" | "unavailable";
@@ -512,3 +513,9 @@ export interface EngineResult {
   interpretation: InterpretationOutput;
   meta: EngineMeta;
 }
+
+export type StoredEngineResult = EngineResult & {
+  isHistorical?: boolean;
+  isLocked?: boolean;
+  snapshotId?: string;
+};

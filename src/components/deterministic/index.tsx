@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { RefreshCw, Activity, XCircle, Star, ShieldCheck, Lock } from "lucide-react";
-import type { EngineResult, AnalysisProgressEvent, AnalysisMode } from "@/lib/deterministic";
+import type { StoredEngineResult, AnalysisProgressEvent, AnalysisMode } from "@/lib/deterministic";
 import { fetchAuthIdentity } from "@/lib/client-auth";
 
 import { OverviewTab } from "./tabs/OverviewTab";
@@ -15,7 +15,7 @@ import { MetaTab } from "./tabs/MetaTab";
 
 interface Props {
   username: string;
-  initialData?: EngineResult | null;
+  initialData?: StoredEngineResult | null;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -43,14 +43,14 @@ const TABS: [TabKey, string][] = [
 
 export function DeterministicProfileClient({ username, initialData }: Props) {
   const router = useRouter();
-  const [data, setData] = useState<EngineResult | null>(initialData || null);
+  const [data, setData] = useState<StoredEngineResult | null>(initialData || null);
   const [error, setError] = useState<string | null>(null);
   const [showStarModal, setShowStarModal] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isVerifyingAgain, setIsVerifyingAgain] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<AnalysisMode>("deep");
+  const [selectedMode, setSelectedMode] = useState<AnalysisMode>(initialData?.meta?.analysisMode || "deep");
   const [progress, setProgress] = useState<AnalysisProgressEvent[]>([]);
   const [currentPhase, setCurrentPhase] = useState("");
   const [budget, setBudget] = useState({ rest: 0, graphql: 0, search: 0 });
@@ -59,14 +59,25 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [elapsed, setElapsed] = useState(0);
 
+  const esRef = useRef<EventSource | null>(null);
+
+  // Close EventSource on unmount
+  useEffect(() => {
+    return () => {
+      esRef.current?.close();
+    };
+  }, []);
+
   const fetchData = useCallback(
     async (force = false, modeToUse: AnalysisMode = selectedMode) => {
       try {
+        esRef.current?.close();
         setIsRefreshing(force);
         setError(null);
         setProgress([]);
         const url = `/api/analyze/deterministic/stream?username=${encodeURIComponent(username)}&mode=${modeToUse}${force ? "&force=true" : ""}`;
         const es = new EventSource(url);
+        esRef.current = es;
 
         es.addEventListener("progress", (e) => {
           try {
@@ -84,11 +95,13 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         });
 
         es.addEventListener("complete", async (e) => {
+          setIsRefreshing(false);
           try {
-            const r = JSON.parse(e.data) as EngineResult;
+            const r = JSON.parse(e.data) as StoredEngineResult;
             setData(r);
             setError(null);
             es.close();
+            esRef.current = null;
             const confetti = (await import("canvas-confetti")).default;
             confetti({
               particleCount: 120,
@@ -102,6 +115,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         });
 
         es.addEventListener("error", (e) => {
+          setIsRefreshing(false);
           try {
             const payload = JSON.parse((e as MessageEvent).data || "{}");
             if (payload.error === "Star required" || payload.showPopup) {
@@ -113,13 +127,17 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
             setError("ANALYSIS_FAILURE");
           }
           es.close();
+          esRef.current = null;
         });
 
-        es.onerror = () => es.close();
+        es.onerror = () => {
+          setIsRefreshing(false);
+          es.close();
+          esRef.current = null;
+        };
       } catch {
-        setError("NETWORK_FAILURE");
-      } finally {
         setIsRefreshing(false);
+        setError("NETWORK_FAILURE");
       }
     },
     [username, selectedMode],
@@ -156,7 +174,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const handleRecheckStar = async () => {
     setIsVerifyingAgain(true);
     try {
-      const res = await fetch("/api/star-status?username=" + username);
+      const res = await fetch("/api/star-status?username=" + encodeURIComponent(username));
       const resData = await res.json();
       if (resData.isStarred) {
         setShowStarModal(false);
@@ -272,8 +290,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   if (!data) return null;
 
   const { scores, interpretation: interp, charts } = data;
-  const isHistorical = (data as unknown as { isHistorical?: boolean }).isHistorical;
-  const isProfileLocked = (data as unknown as { isLocked?: boolean }).isLocked;
+  const isHistorical = data.isHistorical;
+  const isProfileLocked = data.isLocked;
 
   return (
     <main className="min-h-screen" style={{ background: "#fdfcf0", color: "#000000" }}>
@@ -282,7 +300,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
           {/* Mode Selector */}
           <div className="hidden sm:flex items-center bg-white border-2 border-black p-0.5 rounded-lg text-xs font-bold">
             {(["quick", "standard", "deep"] as AnalysisMode[]).map((mode) => {
-              const isActive = data.meta.analysisMode === mode;
+              const isActive = selectedMode === mode;
               const isLockedMode = !isLoggedIn && mode !== "quick";
               return (
                 <button
@@ -332,7 +350,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
                   Deterministic
                 </span>
                 <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-neo-pink text-white border-2 border-black">
-                  {data.meta.analysisMode.toUpperCase()}
+                  {selectedMode.toUpperCase()}
                 </span>
                 {isProfileLocked && (
                   <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-gray-200 text-black border-2 border-black flex items-center gap-1">

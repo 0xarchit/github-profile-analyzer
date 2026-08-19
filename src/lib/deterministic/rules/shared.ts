@@ -50,7 +50,7 @@ export const entropy = (values: number[]) => {
   }, 0);
 };
 export const tokenize = (value: string) =>
-  new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 1));
+  new Set(value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 1));
 export const jaccard = (a: Set<string>, b: Set<string>) => {
   const union = new Set([...a, ...b]);
   if (!union.size) return 0;
@@ -58,7 +58,15 @@ export const jaccard = (a: Set<string>, b: Set<string>) => {
   for (const item of a) if (b.has(item)) intersection += 1;
   return intersection / union.size;
 };
-export const ok = <T>(id: string, name: string, value: T, description: string, source: string, cost: CostTier = "cheap"): RuleResult<T> => ({
+export const ok = <T>(
+  id: string,
+  name: string,
+  value: T,
+  description: string,
+  source: string,
+  cost: CostTier = "cheap",
+  details?: Record<string, unknown>,
+): RuleResult<T> => ({
   id,
   name,
   status: "ok",
@@ -66,6 +74,7 @@ export const ok = <T>(id: string, name: string, value: T, description: string, s
   description,
   source,
   cost,
+  ...(details ? { details } : {}),
 });
 export const withStatus = <T>(
   id: string,

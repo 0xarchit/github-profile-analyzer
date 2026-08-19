@@ -83,8 +83,9 @@ export const rule1_7FollowerFollowingRatio: BaselineRule = (data) => {
 export const rule1_8LanguageBreadth: BaselineRule = (data) => {
   const totals = aggregateLanguages(data);
   const totalBytes = Object.values(totals).reduce((sum, bytes) => sum + bytes, 0);
-  const shares = Object.values(totals).map((bytes) => ratio(bytes, totalBytes));
-  const effectiveDiversity = shares.length ? 1 / shares.reduce((sum, share) => sum + share ** 2, 0) : 0;
+  const shares = totalBytes > 0 ? Object.values(totals).map((bytes) => ratio(bytes, totalBytes)) : [];
+  const sumSquares = shares.reduce((sum, share) => sum + share ** 2, 0);
+  const effectiveDiversity = sumSquares > 0 ? 1 / sumSquares : 0;
   return moderateSample("1.8", "Language breadth", {
     distinct: Object.keys(totals).length,
     effectiveDiversity: round(effectiveDiversity, 2),

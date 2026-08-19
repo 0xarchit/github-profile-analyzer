@@ -14,8 +14,8 @@ import {
 
 type ScoreRule = (data: EngineData, signals?: Record<string, SignalResult>) => RuleResult<number | Record<string, unknown>>;
 
-const score = (id: string, name: string, value: number, description: string, source: string, _details: Record<string, unknown> = {}) =>
-  ok(id, name, round(clamp(value)), description, source, "cheap") as RuleResult<number | Record<string, unknown>>;
+const score = (id: string, name: string, value: number, description: string, source: string, details: Record<string, unknown> = {}) =>
+  ok(id, name, round(clamp(value)), description, source, "cheap", details) as RuleResult<number | Record<string, unknown>>;
 
 const reposWith = (data: EngineData) => data.repos.filter((repo) => !repo.fork && !repo.mirror_url);
 const allTopics = (data: EngineData) => new Set(data.repos.flatMap((repo) => repo.topics));
@@ -35,8 +35,9 @@ export const rule2_2ConsistencyScore: ScoreRule = (data) => {
     running = day.contributionCount ? running + 1 : 0;
     longest = Math.max(longest, running);
   }
-  const consistency = weightedAverage([[saturatingScore(longest, 0.08), 0.35], [activeRatio * 100, 0.4], [clamp(100 - coefficientOfVariation(weekly) * 35), 0.25]]);
-  return score("2.2", "Consistency score", consistency, "Combines streak length, active-day ratio, and inverse weekly commit variance.", "GraphQL contributionCalendar + stats/commit_activity", { longestStreak: longest, activeDaysRatio: activeRatio, weeklyCoefficientOfVariation: coefficientOfVariation(weekly) });
+  const cv = coefficientOfVariation(weekly);
+  const consistency = weightedAverage([[saturatingScore(longest, 0.08), 0.35], [activeRatio * 100, 0.4], [clamp(100 - cv * 35), 0.25]]);
+  return score("2.2", "Consistency score", consistency, "Combines streak length, active-day ratio, and inverse weekly commit variance.", "GraphQL contributionCalendar + stats/commit_activity", { longestStreak: longest, activeDaysRatio: activeRatio, weeklyCoefficientOfVariation: cv });
 };
 
 export const rule2_3CollaborationScore: ScoreRule = (data) => {

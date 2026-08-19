@@ -1,7 +1,9 @@
 export { analyzeGitHubProfile, getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "./engine";
+export { UserNotFoundError, GitHubRequestError, BudgetExceededError } from "./fetchers/client";
 export type { AnalyzeOptions } from "./engine";
 export type {
   EngineResult,
+  StoredEngineResult,
   EngineMeta,
   EngineData,
   AnalysisMode,

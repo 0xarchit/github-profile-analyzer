@@ -31,7 +31,7 @@ export function OverviewTab({ data }: { data: EngineResult }) {
           ))}
           <div className="rounded-xl p-4" style={{ background: "#fef9c3", border: "3px solid black" }}>
             <div className="text-[10px] font-heading uppercase text-yellow-600 mb-1">Auth Multiplier</div>
-            <div className="text-2xl font-heading text-yellow-300">{sc.authenticityMultiplier.toFixed(2)}x</div>
+            <div className="text-2xl font-heading text-yellow-600">{sc.authenticityMultiplier.toFixed(2)}x</div>
             <div className="text-[10px] text-gray-500 mt-1">Weighted: {sc.weightedBeforeMultiplier}</div>
           </div>
         </div>
@@ -63,7 +63,7 @@ export function OverviewTab({ data }: { data: EngineResult }) {
           <h3 className="text-sm font-heading text-black mb-3 flex items-center gap-2"><Clock className="w-4 h-4 text-purple-700" /> Work Rhythm</h3>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <span className="px-2 py-1 rounded text-xs font-heading" style={{ background: "#f3e8ff", color: "#c084fc" }}>{ip.workRhythm.chronotypeTag}</span>
+              <span className="px-2 py-1 rounded text-xs font-heading" style={{ background: "#f3e8ff", color: "#7c3aed" }}>{ip.workRhythm.chronotypeTag}</span>
               <span className="text-xs text-gray-600">{ip.workRhythm.label}</span>
             </div>
             <div className="text-[11px] text-gray-500">{ip.workRhythm.chronotypeDescription}</div>
@@ -153,7 +153,7 @@ export function OverviewTab({ data }: { data: EngineResult }) {
         <h2 className="text-lg font-heading text-black mb-3">Tags</h2>
         <div className="flex flex-wrap gap-2">
           {ip.tags.filter((t) => t.active).map((t) => (
-            <div key={t.id} className="group relative px-3 py-1.5 rounded-lg text-xs font-heading cursor-default" style={{ background: "#e0f7fa", border: "3px solid black", color: "#22d3ee" }}>
+            <div key={t.id} className="group relative px-3 py-1.5 rounded-lg text-xs font-heading cursor-default" style={{ background: "#e0f7fa", border: "3px solid black", color: "#0e7490" }}>
               {t.label}
               <div className="absolute bottom-full left-0 mb-2 p-3 rounded-lg text-[10px] text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 max-w-xs" style={{ background: "white", border: "2px solid black", boxShadow: '2px 2px 0px 0px rgba(0,0,0,1)' }}>
                 {t.description}

@@ -57,7 +57,7 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         setError(null);
 
         const streamUrl = engineMode === "deterministic"
-          ? `/api/analyze/deterministic/stream?username=${encodeURIComponent(username)}`
+          ? `/api/analyze/deterministic/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`
           : `/api/analyze/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`;
         const eventSource = new EventSource(streamUrl);
 

@@ -22,7 +22,11 @@ export function MetaTab({ data, expandedBaselines, setExpandedBaselines }: Props
           <MetaCard label="Mode" value={meta.analysisMode} color="purple" />
           <MetaCard label="Execution Time" value={meta.durationMs ? `${(meta.durationMs / 1000).toFixed(2)}s` : "< 1s"} color="green" />
           <MetaCard label="API Version" value={meta.apiVersion} color="yellow" />
-          <MetaCard label="Timestamp" value={new Date(meta.timestamp).toLocaleTimeString()} color="slate" />
+          <MetaCard
+            label="Timestamp"
+            value={new Date(meta.timestamp).toLocaleTimeString("en-US", { timeZone: "UTC", hour12: false }) + " UTC"}
+            color="slate"
+          />
         </div>
       </section>
 
@@ -37,7 +41,13 @@ export function MetaTab({ data, expandedBaselines, setExpandedBaselines }: Props
                 <span className="text-gray-700">{b.used} / {b.limit} ({b.remaining} remaining)</span>
               </div>
               <div className="h-1.5 rounded-full" style={{ background: "#e8e6d8" }}>
-                <div className="h-full rounded-full" style={{ width: `${(b.used / b.limit) * 100}%`, background: b.remaining === 0 ? "#ef4444" : "#22d3ee" }} />
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${b.limit > 0 ? Math.min(100, (b.used / b.limit) * 100) : 0}%`,
+                    background: b.remaining === 0 ? "#ef4444" : "#22d3ee",
+                  }}
+                />
               </div>
             </div>
           ))}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   analyzeGitHubProfile,
+  UserNotFoundError,
   type AnalysisMode,
   type EngineResult,
 } from "@/lib/deterministic";
@@ -74,7 +75,6 @@ export async function GET(request: NextRequest) {
 
     // ── 2. Profile Lock & Privacy Enforcement ──────────────────────────────
     if (targetUser) {
-      const isLocked = targetUser.settings?.profile_locked ?? true;
       const publicScans = targetUser.settings?.public_scans ?? false;
       const hasPrincipal = Boolean(targetUser.settings?.primary_scan_id);
 
@@ -97,25 +97,9 @@ export async function GET(request: NextRequest) {
           { status: 403 },
         );
       }
-
-      if (isLocked && !isOwnerOfTarget && !force) {
-        const savedScan = await getLatestDeterministicScan(
-          targetUser.id,
-          username,
-          modeParam || undefined,
-        );
-        if (savedScan && savedScan.data) {
-          return NextResponse.json({
-            ...(savedScan.data as object),
-            isHistorical: true,
-            isLocked: true,
-            snapshotId: savedScan.id,
-          });
-        }
-      }
     }
 
-    // ── 3. Tiered Mode Enforcement ─────────────────────────────────────────
+    // ── 3. Tiered Mode Enforcement (Derived before lookup & live analysis) ──
     let effectiveMode: AnalysisMode = "quick";
     if (!isAuthenticated) {
       effectiveMode = "quick";
@@ -128,12 +112,40 @@ export async function GET(request: NextRequest) {
       effectiveMode = modeParam === "deep" || modeParam === "standard" ? "standard" : "quick";
     }
 
-    // ── 4. Token Selection ─────────────────────────────────────────────────
+    // ── 4. Locked Profile Snapshot Access ──────────────────────────────────
+    if (targetUser) {
+      const isLocked = targetUser.settings?.profile_locked ?? true;
+      if (isLocked && !isOwnerOfTarget && !force) {
+        const savedScan = await getLatestDeterministicScan(
+          targetUser.id,
+          username,
+          effectiveMode,
+        );
+        if (savedScan && savedScan.data) {
+          return NextResponse.json({
+            ...(savedScan.data as object),
+            isHistorical: true,
+            isLocked: true,
+            snapshotId: savedScan.id,
+          });
+        }
+        // Non-owner cannot trigger new live analysis on a locked profile with no snapshots
+        return NextResponse.json(
+          {
+            error: "ACCESS_DENIED",
+            message: "This profile is locked and no saved snapshot is available for the requested mode.",
+          },
+          { status: 403 },
+        );
+      }
+    }
+
+    // ── 5. Token Selection ─────────────────────────────────────────────────
     // Any authenticated scan uses the logged-in user's OAuth token (5,000 req/hr).
     // Guest scans use the server token pool (GITHUB_TOKENS).
     const tokenToUse = isAuthenticated && scannerToken ? scannerToken : undefined;
 
-    // ── 5. Run Deterministic Engine ────────────────────────────────────────
+    // ── 6. Run Deterministic Engine ────────────────────────────────────────
     const startedAt = Date.now();
     const result: EngineResult = await analyzeGitHubProfile(username, {
       mode: effectiveMode,
@@ -147,23 +159,33 @@ export async function GET(request: NextRequest) {
       (result.meta.budget.graphql.used || 0) +
       (result.meta.budget.search.used || 0);
 
-    // ── 6. Database Persistence ────────────────────────────────────────────
+    // ── 7. Database Persistence ────────────────────────────────────────────
     if (targetUser && (isOwnerOfTarget || targetUser.settings?.keep_history)) {
-      void saveDeterministicScan(
-        targetUser.id,
-        username,
-        effectiveMode,
-        result,
-        result.scores.finalScore,
-        result.interpretation?.overall?.grade,
-        result.interpretation?.archetypes?.[0]?.label,
-        durationMs,
-        totalCalls,
-      ).catch((err) => console.error("[ROUTE] Save scan failed:", err));
+      try {
+        await saveDeterministicScan(
+          targetUser.id,
+          username,
+          effectiveMode,
+          result,
+          result.scores.finalScore,
+          result.interpretation?.overall?.grade,
+          result.interpretation?.archetypes?.[0]?.label,
+          durationMs,
+          totalCalls,
+        );
+      } catch (err) {
+        console.error("[ROUTE] Save scan failed:", err);
+      }
     }
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof UserNotFoundError) {
+      return NextResponse.json(
+        { error: "USER_NOT_FOUND", message: `GitHub user @${username} was not found.` },
+        { status: 404 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("GITHUB_TOKEN") || message.includes("GITHUB_TOKENS")) {
       return NextResponse.json(

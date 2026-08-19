@@ -10,7 +10,7 @@ import {
 } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
-import type { EngineResult } from "@/lib/deterministic";
+import type { StoredEngineResult } from "@/lib/deterministic";
 
 export const runtime = "edge";
 
@@ -92,7 +92,7 @@ export default async function Page({
   }
 
   if (engineMode === "deterministic") {
-    let initialDeterministicData: EngineResult | null = null;
+    let initialDeterministicData: StoredEngineResult | null = null;
     if (user) {
       const isLocked = user.settings?.profile_locked ?? true;
       const publicScans = user.settings?.public_scans ?? false;
@@ -106,11 +106,14 @@ export default async function Page({
         const savedScan = await getLatestDeterministicScan(user.id, username);
         if (savedScan?.data) {
           initialDeterministicData = {
-            ...(savedScan.data as EngineResult),
+            ...(savedScan.data as StoredEngineResult),
             isHistorical: true,
             isLocked: true,
             snapshotId: savedScan.id,
-          } as EngineResult & { isHistorical: boolean; isLocked: boolean; snapshotId: string };
+          };
+        } else {
+          // Locked profile viewed by non-owner with no saved scan is not accessible
+          notFound();
         }
       }
     }

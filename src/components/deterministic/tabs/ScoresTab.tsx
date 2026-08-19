@@ -22,7 +22,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
                 <span className="text-[10px] text-cyan-700 w-8 shrink-0 font-heading">{r.id}</span>
                 <span className="text-[10px] text-gray-600 w-28 truncate shrink-0">{r.name.replace(/ score$/i, "")}</span>
                 <div className="flex-1 h-2 rounded-full" style={{ background: "#e8e6d8" }}>
-                  <div className="h-full rounded-full" style={{ width: `${(r.value as number)}%`, background: gradeColor(ip.grades.find((g) => g.id === r.id)?.grade ?? "C") }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, r.value as number))}%`, background: gradeColor(ip.grades.find((g) => g.id === r.id)?.grade ?? "C") }} />
                 </div>
                 <span className="text-[10px] text-black w-8 text-right shrink-0">{(r.value as number).toFixed(1)}</span>
                 <span className="text-[9px] text-gray-400 w-10 text-right shrink-0">{(weight * 100).toFixed(0)}%</span>

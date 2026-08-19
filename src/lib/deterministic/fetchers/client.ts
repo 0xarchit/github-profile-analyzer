@@ -4,6 +4,13 @@ export const GITHUB_API_VERSION = "2026-03-10";
 
 type Bucket = "rest" | "graphql" | "search";
 
+export class UserNotFoundError extends Error {
+  constructor(public readonly username: string) {
+    super(`GitHub user @${username} was not found.`);
+    this.name = "UserNotFoundError";
+  }
+}
+
 export class BudgetExceededError extends Error {
   constructor(public readonly bucket: Bucket, public readonly label: string) {
     super(`${bucket} call budget exhausted before ${label}`);

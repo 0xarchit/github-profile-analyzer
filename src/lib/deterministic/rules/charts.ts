@@ -15,7 +15,13 @@ type ChartRule = (data: EngineData, scores?: ScoresOutput) => ChartResult;
 
 const punchMatrix = (data: EngineData) => {
   const matrix = Array.from({ length: 7 }, (_, day) => Array.from({ length: 24 }, (_, hour) => ({ day, hour, count: 0 })));
-  for (const cards of Object.values(data.punchCards)) for (const [day, hour, count] of cards) matrix[day]![hour]!.count += count;
+  for (const cards of Object.values(data.punchCards)) {
+    for (const [day, hour, count] of cards) {
+      if (day >= 0 && day <= 6 && hour >= 0 && hour <= 23 && matrix[day]?.[hour]) {
+        matrix[day][hour].count += count;
+      }
+    }
+  }
   return matrix;
 };
 
@@ -45,12 +51,24 @@ const sampledChart = <T>(
   cost: "moderate" | "expensive" = "moderate",
 ) => chart(withStatus(id, name, "sampled", value, description, source, cost, caveat, size), kind);
 
-export const rule4_1ContributionCalendar: ChartRule = (data) => chart(ok("4.1", "Contribution calendar", data.graphql.calendar.map((day, index) => ({
-  date: day.date,
-  count: day.contributionCount,
-  weekday: day.weekday,
-  week: Math.floor(index / 7),
-})), "Daily public contributions for the last calendar year.", "GraphQL contributionCalendar"), "heatmap");
+export const rule4_1ContributionCalendar: ChartRule = (data) => {
+  let currentWeek = 0;
+  const days = data.graphql.calendar.map((day, index) => {
+    if (index > 0 && day.weekday === 0) {
+      currentWeek += 1;
+    }
+    return {
+      date: day.date,
+      count: day.contributionCount,
+      weekday: day.weekday,
+      week: currentWeek,
+    };
+  });
+  return chart(
+    ok("4.1", "Contribution calendar", days, "Daily public contributions for the last calendar year.", "GraphQL contributionCalendar"),
+    "heatmap",
+  );
+};
 
 export const rule4_2CommitActivity: ChartRule = (data) => {
   const weeks = new Map<number, number>();

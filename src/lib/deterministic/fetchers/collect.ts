@@ -1,5 +1,5 @@
 import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, RepoQuality, SearchSummary, SecuritySummary } from "../types";
-import { BudgetExceededError, GitHubClient, GitHubRequestError, isUnavailableStatus } from "./client";
+import { BudgetExceededError, GitHubClient, GitHubRequestError, UserNotFoundError, isUnavailableStatus } from "./client";
 import {
   compareRefs,
   fetchBranches,
@@ -111,11 +111,19 @@ const decodeBase64 = (base64: string): string => {
 async function fetchAllRepos(client: GitHubClient, username: string, unavailable: Record<string, string>) {
   const repos: GitHubRepo[] = [];
   for (let page = 1; page <= 10; page += 1) {
-    const batch = await safe(unavailable, `repos-page-${page}`, [] as GitHubRepo[], async () =>
-      (await fetchUserReposPage(client, username, page)).data,
-    );
+    let success = false;
+    let batch: GitHubRepo[] = [];
+    try {
+      const res = await fetchUserReposPage(client, username, page);
+      batch = res.data;
+      success = true;
+    } catch (err) {
+      unavailable[`repos-page-${page}`] = err instanceof Error ? err.message : String(err);
+      unavailable["repos-incomplete"] = `Repository listing incomplete due to error on page ${page}.`;
+      break;
+    }
     repos.push(...batch);
-    if (batch.length < 100) break;
+    if (success && batch.length < 100) break;
   }
   if (repos.length === 1_000) unavailable["repos-pagination"] = "Repository collection capped at 1,000 items for this run.";
   return repos;
@@ -128,9 +136,19 @@ async function fetchThreePages<T>(
 ) {
   const all: T[] = [];
   for (let page = 1; page <= 3; page += 1) {
-    const batch = await safe(unavailable, `${label}-page-${page}`, [] as T[], async () => (await operation(page)).data);
+    let success = false;
+    let batch: T[] = [];
+    try {
+      const res = await operation(page);
+      batch = res.data;
+      success = true;
+    } catch (err) {
+      unavailable[`${label}-page-${page}`] = err instanceof Error ? err.message : String(err);
+      unavailable[`${label}-incomplete`] = `${label} collection incomplete due to error on page ${page}.`;
+      break;
+    }
     all.push(...batch);
-    if (batch.length < 100) break;
+    if (success && batch.length < 100) break;
   }
   return all;
 }
@@ -313,7 +331,15 @@ export async function collectEngineData(
     emit("warning", "quota-profile", "Search quota is below 5; search-derived rules will be degraded.");
   }
 
-  const user = (await fetchUser(client, username)).data;
+  let user;
+  try {
+    user = (await fetchUser(client, username)).data;
+  } catch (err) {
+    if (err instanceof GitHubRequestError && err.status === 404) {
+      throw new UserNotFoundError(username);
+    }
+    throw err;
+  }
   emit("phase", "repository-discovery", "Discovering repositories and ranking the top candidates.");
   const repos = await fetchAllRepos(client, username, unavailable);
   const ranked = [...repos].sort((a, b) => repoRank(b, now) - repoRank(a, now));
