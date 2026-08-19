@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "./ProfileClient";
-import { DeterministicProfileClient } from "@/components/DeterministicProfileClient";
+import { DeterministicProfileClient } from "@/components/deterministic";
 import { getUserByUsername, getLatestSelfScan, getScanById } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
