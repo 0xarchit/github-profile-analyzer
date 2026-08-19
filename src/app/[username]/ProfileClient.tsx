@@ -99,13 +99,13 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
           } catch {}
         });
 
-        eventSource.addEventListener("error", (e) => {
+        eventSource.addEventListener("analysis-error", (e) => {
           try {
             const payload = JSON.parse((e as MessageEvent).data || "{}");
             if (payload.error === "Star required") {
               setShowStarModal(true);
             } else {
-              setError(payload.error || "Diagnostic matrix failed");
+              setError(payload.message || payload.error || "Analysis failed");
             }
           } catch {
             setError("DIAGNOSTIC_FAILURE");
@@ -115,6 +115,7 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         });
 
         eventSource.onerror = () => {
+          setError("NETWORK_FAILURE");
           eventSource.close();
         };
       } catch {

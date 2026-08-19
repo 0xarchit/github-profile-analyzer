@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       try {
         const session = await getSession();
         const scannerToken = session?.accessToken;
-        const isAuthenticated = Boolean(session?.username);
+        const isAuthenticated = Boolean(session?.accessToken && session.accessToken.trim());
         const viewerUser = session
           ? await getUserByGithubId(session.githubId)
           : null;
@@ -178,6 +178,7 @@ export async function GET(request: NextRequest) {
           mode: effectiveMode,
           token: tokenToUse,
           bypassCache: force && isOwnerOfTarget,
+          signal: request.signal,
           onProgress: (event: AnalysisProgressEvent) => {
             send("progress", JSON.stringify(event));
           },
@@ -228,7 +229,7 @@ export async function GET(request: NextRequest) {
           send(
             "analysis-error",
             JSON.stringify({
-              error: "Deterministic engine tokens unavailable.",
+              error: "TOKEN_UNAVAILABLE",
               message: "GitHub API tokens are currently saturated. Please try again shortly.",
             }),
           );
@@ -241,7 +242,14 @@ export async function GET(request: NextRequest) {
             }),
           );
         } else {
-          send("analysis-error", JSON.stringify({ error: message, message }));
+          console.error("[STREAM ERROR]", error);
+          send(
+            "analysis-error",
+            JSON.stringify({
+              error: "ANALYSIS_FAILED",
+              message: "An error occurred while analyzing this profile. Please try again.",
+            }),
+          );
         }
         controller.close();
       }

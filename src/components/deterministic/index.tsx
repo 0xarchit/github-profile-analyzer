@@ -129,7 +129,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
             if (payload.error === "Star required" || payload.showPopup) {
               setShowStarModal(true);
             } else {
-              setError(payload.error || payload.message || "Analysis failed");
+              setError(payload.message || payload.error || "Analysis failed");
             }
           } catch {
             setError("ANALYSIS_FAILURE");
