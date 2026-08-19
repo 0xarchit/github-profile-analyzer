@@ -289,7 +289,7 @@ export type AnalysisStreamMessage =
   | { type: "error"; error: string };
 
 export interface EngineMeta {
-  authTier: "TOKEN-POOL";
+  authTier: "TOKEN-POOL" | "USER-OAUTH";
   analysisMode: AnalysisMode;
   apiVersion: string;
   timestamp: string;

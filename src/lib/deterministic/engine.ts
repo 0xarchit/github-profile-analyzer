@@ -5,6 +5,8 @@ import { runChartRules } from "./rules/charts";
 import { runScoringRules } from "./rules/scoring";
 import { runSignalRules } from "./rules/signals";
 import { runInterpretation } from "./interpretation";
+import { getFallbackToken } from "@/lib/github/http";
+import { getCachedData, setCachedData } from "@/lib/redis";
 import type { AnalysisMode, AnalysisModeProfile, AnalysisProgressCallback, AnalysisProgressEvent, BudgetSnapshot, EngineResult, RuleResult } from "./types";
 
 export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> = {
@@ -43,8 +45,7 @@ export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> =
   },
 };
 
-const cache = new Map<string, { expiresAt: number; value: EngineResult }>();
-const CACHE_MS = 15 * 60 * 1_000;
+const CACHE_TTL_SECONDS = 15 * 60; // 15 minutes Redis cache
 
 const emptyBudget = (profile: AnalysisModeProfile = ANALYSIS_MODE_PROFILES.deep): BudgetSnapshot => ({
   rest: { used: 0, limit: profile.budget.rest, remaining: profile.budget.rest },
@@ -57,13 +58,14 @@ export const getAnalysisModeProfile = (mode: AnalysisMode = "deep") => ANALYSIS_
 export interface AnalyzeOptions {
   bypassCache?: boolean;
   mode?: AnalysisMode;
+  token?: string;
   onProgress?: AnalysisProgressCallback;
 }
 
-export function getRequiredGitHubToken() {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("Missing required environment variable GITHUB_TOKEN. Add it to your .env file.");
-  return token;
+export function getRequiredGitHubToken(explicitToken?: string): string {
+  if (explicitToken && explicitToken.trim()) return explicitToken.trim();
+  if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim()) return process.env.GITHUB_TOKEN.trim();
+  return getFallbackToken();
 }
 
 const normalizeUsername = (value: string) => {
@@ -131,15 +133,21 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   });
 
   const username = normalizeUsername(input);
-  const key = username.toLowerCase() + ":" + mode;
-  const cached = cache.get(key);
-  if (!options.bypassCache && cached && cached.expiresAt > Date.now()) {
-    emit("cache", "cache", `Serving cached ${profile.label.toLowerCase()} deterministic result for @${username}.`, emptyBudget(profile));
-    return { ...cached.value, meta: { ...cached.value.meta, cache: { ...cached.value.meta.cache, resultHit: true } } };
+  const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}`;
+
+  if (!options.bypassCache) {
+    const cached = await getCachedData<EngineResult>(redisCacheKey);
+    if (cached) {
+      emit("cache", "cache", `Serving cached ${profile.label.toLowerCase()} deterministic result for @${username}.`, emptyBudget(profile));
+      return { ...cached, meta: { ...cached.meta, cache: { ...cached.meta.cache, resultHit: true } } };
+    }
   }
 
-  emit("phase", "initializing", `Starting ${profile.label.toLowerCase()} deterministic analysis for @${username}; token-pool mode.`, emptyBudget(profile));
-  const client = new GitHubClient(getRequiredGitHubToken(), profile.budget, {
+  const tokenOrProvider = options.token && options.token.trim() ? options.token.trim() : getFallbackToken;
+  const authTier = options.token && options.token.trim() ? "USER-OAUTH" : "TOKEN-POOL";
+
+  emit("phase", "initializing", `Starting ${profile.label.toLowerCase()} deterministic analysis for @${username}; ${authTier.toLowerCase()} mode.`, emptyBudget(profile));
+  const client = new GitHubClient(tokenOrProvider, profile.budget, {
     onProgress: options.onProgress,
     startedAt,
   });
@@ -179,7 +187,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
     charts,
     interpretation,
     meta: {
-      authTier: "TOKEN-POOL",
+      authTier,
       analysisMode: mode,
       apiVersion: GITHUB_API_VERSION,
       timestamp: data.now.toISOString(),
@@ -189,7 +197,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
         resultHit: false,
         endpointHits: client.cacheStats.hits,
         endpointMisses: client.cacheStats.misses,
-        ttlSeconds: 600,
+        ttlSeconds: CACHE_TTL_SECONDS,
       },
       githubRateLimit: collectionMeta.githubRateLimit,
       ...statuses,
@@ -206,7 +214,9 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
     },
   };
 
-  cache.set(key, { expiresAt: Date.now() + CACHE_MS, value: result });
+  // Cache in Upstash Redis for 15 minutes
+  await setCachedData(redisCacheKey, result, CACHE_TTL_SECONDS).catch(() => null);
+
   emit("complete", "complete", `Analysis complete: ${budget.rest.used + budget.graphql.used + budget.search.used} API calls, ${Math.round((Date.now() - startedAt) / 100) / 10}s elapsed.`, budget);
   return result;
 }

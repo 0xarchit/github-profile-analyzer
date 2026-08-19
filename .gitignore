@@ -48,8 +48,5 @@ setup.sql
 claims.md
 fixes.md
 
-
-deterministic/
-!src/lib/deterministic
 DETERMINISTIC_RULES.md
 prompt.md

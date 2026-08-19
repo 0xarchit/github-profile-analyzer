@@ -2,9 +2,15 @@ import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProfileClient } from "./ProfileClient";
 import { DeterministicProfileClient } from "@/components/deterministic";
-import { getUserByUsername, getLatestSelfScan, getScanById } from "@/lib/db";
+import {
+  getUserByUsername,
+  getLatestSelfScan,
+  getScanById,
+  getLatestDeterministicScan,
+} from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
+import type { EngineResult } from "@/lib/deterministic";
 
 export const runtime = "edge";
 
@@ -31,7 +37,6 @@ export async function generateMetadata({
       if (!scan && (isOwner || user.settings?.public_scans)) {
         scan = await getLatestSelfScan(user.id, username);
       }
-      // If still no scan and not owner and public_scans off -> private
       if (!scan && !isOwner && !user.settings?.public_scans) {
         notFound();
       }
@@ -41,7 +46,6 @@ export async function generateMetadata({
         devType = scan.data.developer_type || "Developer";
       }
     }
-    // If no user (unregistered), we still allow metadata (score remains 0)
   }
 
   const title = `${username}'s Engineering Protocol | ${score}/100 GitScore`;
@@ -87,6 +91,38 @@ export default async function Page({
     isOwner = session?.username?.toLowerCase() === username.toLowerCase();
   }
 
+  if (engineMode === "deterministic") {
+    let initialDeterministicData: EngineResult | null = null;
+    if (user) {
+      const isLocked = user.settings?.profile_locked ?? true;
+      const publicScans = user.settings?.public_scans ?? false;
+      const hasPrincipal = Boolean(user.settings?.primary_scan_id);
+
+      if (!isOwner && !publicScans && !hasPrincipal) {
+        notFound();
+      }
+
+      if (isLocked && !isOwner) {
+        const savedScan = await getLatestDeterministicScan(user.id, username);
+        if (savedScan?.data) {
+          initialDeterministicData = {
+            ...(savedScan.data as EngineResult),
+            isHistorical: true,
+            isLocked: true,
+            snapshotId: savedScan.id,
+          } as EngineResult & { isHistorical: boolean; isLocked: boolean; snapshotId: string };
+        }
+      }
+    }
+
+    return (
+      <DeterministicProfileClient
+        username={username}
+        initialData={initialDeterministicData}
+      />
+    );
+  }
+
   let scan = null;
   if (user) {
     if (user.settings?.primary_scan_id) {
@@ -95,7 +131,6 @@ export default async function Page({
     if (!scan && (isOwner || user.settings?.public_scans)) {
       scan = await getLatestSelfScan(user.id, username);
     }
-    // If still no scan and not owner and public_scans off -> private profile
     if (!scan && !isOwner && !user.settings?.public_scans) {
       notFound();
     }
@@ -111,9 +146,11 @@ export default async function Page({
       } as AnalysisResult)
     : undefined;
 
-  if (engineMode === "deterministic") {
-    return <DeterministicProfileClient username={username} />;
-  }
-
-  return <ProfileClient username={username} initialData={initialData} engineMode={engineMode} />;
+  return (
+    <ProfileClient
+      username={username}
+      initialData={initialData}
+      engineMode={engineMode}
+    />
+  );
 }

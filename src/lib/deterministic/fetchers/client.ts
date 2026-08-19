@@ -70,16 +70,31 @@ export class GitHubClient {
 
   private readonly onProgress?: AnalysisProgressCallback;
   private readonly startedAt: number;
+  private currentToken: string;
+  private readonly tokenProvider?: () => string;
 
   constructor(
-    private readonly token: string,
+    tokenOrProvider: string | (() => string),
     limits?: { rest: number; graphql: number; search: number },
     options: GitHubClientOptions = {},
   ) {
-    if (!token) throw new Error("Missing required environment variable GITHUB_TOKEN.");
+    if (typeof tokenOrProvider === "function") {
+      this.tokenProvider = tokenOrProvider;
+      this.currentToken = tokenOrProvider();
+    } else {
+      this.currentToken = tokenOrProvider;
+    }
+    if (!this.currentToken) throw new Error("Missing required GitHub access token.");
     this.budget = new CallBudget(limits);
     this.onProgress = options.onProgress;
     this.startedAt = options.startedAt ?? Date.now();
+  }
+
+  private rotateToken(): string {
+    if (this.tokenProvider) {
+      this.currentToken = this.tokenProvider();
+    }
+    return this.currentToken;
   }
 
   private emit(
@@ -109,7 +124,7 @@ export class GitHubClient {
   private headers(extra?: HeadersInit) {
     return {
       Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${this.token}`,
+      Authorization: `Bearer ${this.currentToken}`,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
       "User-Agent": "github-deterministic-preview",
       ...extra,
@@ -168,7 +183,11 @@ export class GitHubClient {
       if (response.status === 202 || response.status === 403 || response.status === 429) {
         const remaining = Number(response.headers.get("x-ratelimit-remaining") ?? "1");
         const retryAfter = Number(response.headers.get("retry-after") ?? "0");
-        if (attempt < retries && (response.status === 202 || remaining > 0 || retryAfter > 0)) {
+        if (attempt < retries && (response.status === 202 || remaining > 0 || retryAfter > 0 || response.status === 403 || response.status === 429)) {
+          // If rate limited, rotate token from pool for next attempt
+          if (response.status === 403 || response.status === 429) {
+            this.rotateToken();
+          }
           const delayMs = Math.max(retryAfter * 1_000, 600 * 2 ** attempt);
           this.emit("retry", "github-retry", `${label} returned ${response.status}; backing off ${delayMs}ms before retry ${attempt + 1}/${retries}`, {
             bucket,
