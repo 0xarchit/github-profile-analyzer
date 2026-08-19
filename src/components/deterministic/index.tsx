@@ -64,14 +64,19 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   // Close EventSource on unmount
   useEffect(() => {
     return () => {
-      esRef.current?.close();
+      const active = esRef.current;
+      esRef.current = null;
+      active?.close();
     };
   }, []);
 
   const fetchData = useCallback(
     async (force = false, modeToUse: AnalysisMode = selectedMode) => {
       try {
-        esRef.current?.close();
+        const prev = esRef.current;
+        esRef.current = null;
+        prev?.close();
+
         setIsRefreshing(force);
         setError(null);
         setProgress([]);
@@ -80,6 +85,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         esRef.current = es;
 
         es.addEventListener("progress", (e) => {
+          if (esRef.current !== es) return;
           try {
             const ev = JSON.parse(e.data) as AnalysisProgressEvent;
             setProgress((p) => [...p.slice(-30), ev]);
@@ -101,8 +107,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
             const r = JSON.parse(e.data) as StoredEngineResult;
             setData(r);
             setError(null);
-            es.close();
             esRef.current = null;
+            es.close();
             const confetti = (await import("canvas-confetti")).default;
             confetti({
               particleCount: 120,
@@ -115,7 +121,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
           }
         });
 
-        es.addEventListener("error", (e) => {
+        es.addEventListener("analysis-error", (e) => {
           if (esRef.current !== es) return;
           setIsRefreshing(false);
           try {
@@ -128,16 +134,16 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
           } catch {
             setError("ANALYSIS_FAILURE");
           }
-          es.close();
           esRef.current = null;
+          es.close();
         });
 
         es.onerror = () => {
           if (esRef.current !== es) return;
           setError("NETWORK_FAILURE");
           setIsRefreshing(false);
-          es.close();
           esRef.current = null;
+          es.close();
         };
       } catch {
         setIsRefreshing(false);

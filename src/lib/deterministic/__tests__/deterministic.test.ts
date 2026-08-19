@@ -38,9 +38,10 @@ const flagshipRepo: GitHubRepo = {
 };
 
 function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
+  const mockNow = new Date("2026-08-19T00:00:00Z");
   return {
     username: "testdev",
-    now: new Date("2026-08-19T00:00:00Z"),
+    now: mockNow,
     user: {
       login: "testdev",
       name: "Test Developer",
@@ -78,7 +79,7 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
       totalDiscussionCommentContributions: 0,
       contributionYears: [2024, 2025, 2026],
       calendar: Array.from({ length: 365 }, (_, i) => ({
-        date: new Date(Date.now() - (364 - i) * 86400000).toISOString().split("T")[0]!,
+        date: new Date(mockNow.getTime() - (364 - i) * 86400000).toISOString().split("T")[0]!,
         contributionCount: i % 3 === 0 ? 3 : 0,
         weekday: i % 7,
         color: "#22c55e",
@@ -314,11 +315,12 @@ describe("Deterministic Interpretation Layer & Boundaries", () => {
   });
 
   it("evaluates momentum states correctly", () => {
+    const baseMock = createMockEngineData();
     const surgingData = createMockEngineData({
       graphql: {
-        ...createMockEngineData().graphql,
+        ...baseMock.graphql,
         calendar: Array.from({ length: 365 }, (_, i) => ({
-          date: new Date(Date.now() - (364 - i) * 86400000).toISOString().split("T")[0]!,
+          date: new Date(baseMock.now.getTime() - (364 - i) * 86400000).toISOString().split("T")[0]!,
           contributionCount: i >= 275 ? 10 : 1,
           weekday: i % 7,
           color: "#22c55e",

@@ -127,10 +127,22 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   });
 
   const username = normalizeUsername(input);
-  const hasUserToken = Boolean(options.token && options.token.trim());
+  const rawToken = options.token?.trim() ?? "";
+  const hasUserToken = Boolean(rawToken);
   const authTier = hasUserToken ? "USER-OAUTH" : "TOKEN-POOL";
-  const tokenOrProvider = hasUserToken ? (options.token as string).trim() : getFallbackToken;
-  const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}:${authTier.toLowerCase()}`;
+  const tokenOrProvider = hasUserToken ? rawToken : getFallbackToken;
+
+  // Derive non-reversible token fingerprint to prevent OAuth cross-caller cache leaks
+  let tokenFingerprint = "pool";
+  if (hasUserToken) {
+    let hash = 0;
+    for (let i = 0; i < rawToken.length; i++) {
+      hash = ((hash << 5) - hash) + rawToken.charCodeAt(i);
+      hash |= 0;
+    }
+    tokenFingerprint = `oauth:${Math.abs(hash).toString(36)}`;
+  }
+  const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}:${tokenFingerprint}`;
 
   if (!options.bypassCache) {
     try {

@@ -148,7 +148,9 @@ export class GitHubClient {
     const bucket = options.bucket ?? "rest";
     const label = options.label ?? path;
     const url = path.startsWith("http") ? path : `https://api.github.com${path}`;
-    const cacheKey = `rest:${this.tokenFingerprint}:${url}`;
+    const requestHeaders = new Headers(options.headers);
+    const acceptHeader = requestHeaders.get("accept") ?? "application/json";
+    const cacheKey = `rest:${this.tokenFingerprint}:${acceptHeader}:${url}`;
     const useCache = options.cache ?? true;
 
     if (useCache) {

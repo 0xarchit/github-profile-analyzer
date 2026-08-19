@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
         if (!hasStarred) {
           send(
-            "error",
+            "analysis-error",
             JSON.stringify({
               error: "Star required",
               showPopup: true,
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
           // Private profile check
           if (!isOwnerOfTarget && !publicScans && !hasPrincipal) {
             send(
-              "error",
+              "analysis-error",
               JSON.stringify({
                 error: "ACCESS_DENIED",
                 message: "This developer profile is set to private.",
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
           // Force refresh permission check
           if (force && !isOwnerOfTarget) {
             send(
-              "error",
+              "analysis-error",
               JSON.stringify({
                 error: "ACCESS_DENIED",
                 message: "Only the profile owner can force-refresh this profile.",
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
             }
             // Non-owner cannot trigger new live analysis on a locked profile with no snapshots
             send(
-              "error",
+              "analysis-error",
               JSON.stringify({
                 error: "ACCESS_DENIED",
                 message: "This profile is locked and no saved snapshot is available for the requested mode.",
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         if (error instanceof UserNotFoundError) {
           send(
-            "error",
+            "analysis-error",
             JSON.stringify({
               error: "USER_NOT_FOUND",
               message: `GitHub user @${username} was not found.`,
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest) {
         const message = error instanceof Error ? error.message : "Unknown error";
         if (message.includes("GITHUB_TOKEN") || message.includes("GITHUB_TOKENS")) {
           send(
-            "error",
+            "analysis-error",
             JSON.stringify({
               error: "Deterministic engine tokens unavailable.",
               message: "GitHub API tokens are currently saturated. Please try again shortly.",
@@ -234,14 +234,14 @@ export async function GET(request: NextRequest) {
           );
         } else if (message.includes("not found")) {
           send(
-            "error",
+            "analysis-error",
             JSON.stringify({
               error: "USER_NOT_FOUND",
               message: `GitHub user @${username} was not found.`,
             }),
           );
         } else {
-          send("error", JSON.stringify({ error: message, message }));
+          send("analysis-error", JSON.stringify({ error: message, message }));
         }
         controller.close();
       }
