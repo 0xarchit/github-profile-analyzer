@@ -17,11 +17,12 @@ export function MetaTab({ data, expandedBaselines, setExpandedBaselines }: Props
       {/* Engine Info */}
       <section className="rounded-xl p-5" style={{ background: "white", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }}>
         <h2 className="text-lg font-heading text-black mb-4 flex items-center gap-2"><Cpu className="w-5 h-5 text-cyan-700" /> Engine Metadata</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <MetaCard label="Auth Tier" value={meta.authTier} color="cyan" />
           <MetaCard label="Mode" value={meta.analysisMode} color="purple" />
+          <MetaCard label="Execution Time" value={meta.durationMs ? `${(meta.durationMs / 1000).toFixed(2)}s` : "< 1s"} color="green" />
           <MetaCard label="API Version" value={meta.apiVersion} color="yellow" />
-          <MetaCard label="Timestamp" value={new Date(meta.timestamp).toLocaleString()} color="slate" />
+          <MetaCard label="Timestamp" value={new Date(meta.timestamp).toLocaleTimeString()} color="slate" />
         </div>
       </section>
 

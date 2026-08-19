@@ -293,6 +293,7 @@ export interface EngineMeta {
   analysisMode: AnalysisMode;
   apiVersion: string;
   timestamp: string;
+  durationMs: number;
   budget: BudgetSnapshot;
   budgetPreview: AnalysisModeProfile;
   cache: {

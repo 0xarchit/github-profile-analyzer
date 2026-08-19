@@ -34,11 +34,15 @@ export function GradeRow({ grade }: { grade: InterpretationGrade }) {
 
 export function SignalRow({ signal, expanded, onToggle, flagged }: { signal: SignalResult; expanded: boolean; onToggle: () => void; flagged: boolean }) {
   return (
-    <div className="rounded-lg overflow-hidden" style={{ background: flagged ? "#fce7f3" : "white", border: flagged ? "3px solid black" : "2px solid black" }}>
+    <div className="rounded-lg overflow-hidden" style={{ background: flagged ? "#fff1f2" : "white", border: flagged ? "2px solid #e11d48" : "2px solid black" }}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-3 py-2 text-left">
-        {flagged ? <AlertTriangle className="w-3 h-3 text-pink-700 shrink-0" /> : <CheckCircle className="w-3 h-3 text-gray-400 shrink-0" />}
-        <span className="text-[10px] text-cyan-700 w-8 shrink-0">{signal.id}</span>
-        <span className={`text-xs flex-1 ${flagged ? "text-pink-300" : "text-gray-600"}`}>{signal.name}</span>
+        {flagged ? (
+          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+        ) : (
+          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+        )}
+        <span className="text-[10px] text-cyan-700 w-8 shrink-0 font-heading">{signal.id}</span>
+        <span className={`text-xs flex-1 ${flagged ? "text-rose-900 font-semibold" : "text-gray-800"}`}>{signal.name}</span>
         <StatusBadge status={signal.status} />
         {expanded ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
       </button>

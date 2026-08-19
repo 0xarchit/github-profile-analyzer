@@ -14,8 +14,8 @@ export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> =
     id: "quick",
     label: "Quick",
     description: "Fast public snapshot with three enriched repositories and no expensive history sampling.",
-    expectedCalls: { minimum: 35, maximum: 125 },
-    budget: { rest: 140, graphql: 4, search: 6 },
+    expectedCalls: { minimum: 25, maximum: 45 },
+    budget: { rest: 45, graphql: 4, search: 6 },
     repositoryLimit: 3,
     forkLimit: 1,
     starRepositoryLimit: 0,
@@ -185,6 +185,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
       analysisMode: mode,
       apiVersion: GITHUB_API_VERSION,
       timestamp: data.now.toISOString(),
+      durationMs: Date.now() - startedAt,
       budget,
       budgetPreview: profile,
       cache: {

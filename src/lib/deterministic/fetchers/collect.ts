@@ -370,21 +370,34 @@ export async function collectEngineData(
   await Promise.all(topRepos.map(async (repo) => {
     const owner = repo.owner.login;
     const key = repo.full_name;
+    const isQuick = profile.id === "quick";
     const results = await Promise.all([
       safe(unavailable, `${key}-languages`, {}, async () => (await fetchLanguages(client, owner, repo.name)).data),
       safe(unavailable, `${key}-releases`, [], async () => (await fetchReleases(client, owner, repo.name)).data),
       safe(unavailable, `${key}-branches`, [], async () => (await fetchBranches(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-commits`, [], async () => (await fetchCommits(client, owner, repo.name, username, 100)).data),
-      safe(unavailable, `${key}-activity`, [], async () => (await fetchCommitActivity(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-frequency`, [], async () => (await fetchCodeFrequency(client, owner, repo.name)).data),
-      safe(
-        unavailable,
-        `${key}-participation`,
-        { all: [], owner: [] },
-        async () => (await fetchParticipation(client, owner, repo.name)).data,
-      ),
-      safe(unavailable, `${key}-punch`, [], async () => (await fetchPunchCard(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-contributors`, [], async () => (await fetchContributors(client, owner, repo.name)).data),
+      isQuick
+        ? Promise.resolve([])
+        : safe(unavailable, `${key}-commits`, [], async () => (await fetchCommits(client, owner, repo.name, username, 100)).data),
+      isQuick
+        ? Promise.resolve([])
+        : safe(unavailable, `${key}-activity`, [], async () => (await fetchCommitActivity(client, owner, repo.name)).data),
+      isQuick
+        ? Promise.resolve([])
+        : safe(unavailable, `${key}-frequency`, [], async () => (await fetchCodeFrequency(client, owner, repo.name)).data),
+      isQuick
+        ? Promise.resolve({ all: [], owner: [] })
+        : safe(
+            unavailable,
+            `${key}-participation`,
+            { all: [], owner: [] },
+            async () => (await fetchParticipation(client, owner, repo.name)).data,
+          ),
+      isQuick
+        ? Promise.resolve([])
+        : safe(unavailable, `${key}-punch`, [], async () => (await fetchPunchCard(client, owner, repo.name)).data),
+      isQuick
+        ? Promise.resolve([])
+        : safe(unavailable, `${key}-contributors`, [], async () => (await fetchContributors(client, owner, repo.name)).data),
       fetchQuality(client, repo, unavailable),
     ]);
     languages[key] = results[0];
