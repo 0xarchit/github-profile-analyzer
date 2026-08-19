@@ -1,4 +1,4 @@
-import { GITHUB_API_VERSION, GitHubClient } from "./fetchers/client";
+import { GITHUB_API_VERSION, GitHubClient, computeTokenFingerprintSync } from "./fetchers/client";
 import { collectEngineData } from "./fetchers/collect";
 import { runBaselineRules } from "./rules/baseline";
 import { runChartRules } from "./rules/charts";
@@ -60,6 +60,7 @@ export interface AnalyzeOptions {
   mode?: AnalysisMode;
   token?: string;
   onProgress?: AnalysisProgressCallback;
+  signal?: AbortSignal;
 }
 
 const normalizeUsername = (value: string) => {
@@ -133,15 +134,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   const tokenOrProvider = hasUserToken ? rawToken : getFallbackToken;
 
   // Derive non-reversible token fingerprint to prevent OAuth cross-caller cache leaks
-  let tokenFingerprint = "pool";
-  if (hasUserToken) {
-    let hash = 0;
-    for (let i = 0; i < rawToken.length; i++) {
-      hash = ((hash << 5) - hash) + rawToken.charCodeAt(i);
-      hash |= 0;
-    }
-    tokenFingerprint = `oauth:${Math.abs(hash).toString(36)}`;
-  }
+  const tokenFingerprint = hasUserToken ? `oauth:${computeTokenFingerprintSync(rawToken)}` : "pool";
   const redisCacheKey = `analysed:det:${username.toLowerCase()}:${mode}:${tokenFingerprint}`;
 
   if (!options.bypassCache) {
@@ -160,11 +153,13 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   const client = new GitHubClient(tokenOrProvider, profile.budget, {
     onProgress: options.onProgress,
     startedAt,
+    signal: options.signal,
   });
   const { data, meta: collectionMeta } = await collectEngineData(client, username, {
     profile,
     onProgress: options.onProgress,
     startedAt,
+    signal: options.signal,
   });
   emit("phase", "rule-evaluation", "Collection complete; evaluating baseline, signal, score, and chart rules.", client.budget.snapshot());
   const baseline = runBaselineRules(data);

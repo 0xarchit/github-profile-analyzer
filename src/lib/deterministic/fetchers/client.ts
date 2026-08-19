@@ -47,7 +47,16 @@ export class CallBudget {
   }
 }
 
-const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const sleep = (milliseconds: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+    const timeout = setTimeout(resolve, milliseconds);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timeout);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+
 const ENDPOINT_CACHE_TTL_MS = 10 * 60 * 1_000;
 const MAX_CACHE_ENTRIES = 500;
 const endpointCache = new Map<string, { expiresAt: number; data: unknown; headers: Array<[string, string]> }>();
@@ -69,14 +78,31 @@ const writeEndpointCache = (key: string, data: unknown, headers: Headers) => {
   endpointCache.set(key, { expiresAt: Date.now() + ENDPOINT_CACHE_TTL_MS, data: structuredClone(data), headers: [...headers.entries()] });
 };
 
-function simpleTokenFingerprint(token: string): string {
+export function computeTokenFingerprintSync(token: string): string {
   if (!token) return "anon";
-  let hash = 0;
+  let h1 = 0x811c9dc5, h2 = 0x84222325, h3 = 0xcbf29ce4, h4 = 0x67452301;
   for (let i = 0; i < token.length; i++) {
-    hash = ((hash << 5) - hash) + token.charCodeAt(i);
-    hash |= 0;
+    const code = token.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193);
+    h2 = Math.imul(h2 ^ (code + i), 0x5bd1e995);
+    h3 = Math.imul(h3 ^ ((code << 4) | (code >>> 4)), 0x27d4eb2f);
+    h4 = Math.imul(h4 ^ (code * 31), 0x165667b1);
   }
-  return Math.abs(hash).toString(36);
+  const toHex = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
+  return `${toHex(h1)}${toHex(h2)}${toHex(h3)}${toHex(h4)}`;
+}
+
+function combineSignals(timeoutMs: number, callerSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!callerSignal) return timeoutSignal;
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([timeoutSignal, callerSignal]);
+  }
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  timeoutSignal.addEventListener("abort", onAbort, { once: true });
+  callerSignal.addEventListener("abort", onAbort, { once: true });
+  return controller.signal;
 }
 
 export class GitHubClient {
@@ -87,24 +113,26 @@ export class GitHubClient {
   private tokenFingerprint: string;
   private readonly onProgress?: AnalysisProgressCallback;
   private readonly startedAt: number;
+  readonly signal?: AbortSignal;
 
   constructor(
     tokenOrProvider: string | (() => string),
     budgetLimits?: { rest: number; graphql: number; search: number },
-    options: { onProgress?: AnalysisProgressCallback; startedAt?: number } = {},
+    options: { onProgress?: AnalysisProgressCallback; startedAt?: number; signal?: AbortSignal } = {},
   ) {
     this.tokenOrProvider = tokenOrProvider;
     this.currentToken = typeof tokenOrProvider === "function" ? tokenOrProvider() : tokenOrProvider;
-    this.tokenFingerprint = simpleTokenFingerprint(this.currentToken);
+    this.tokenFingerprint = computeTokenFingerprintSync(this.currentToken);
     this.budget = new CallBudget(budgetLimits);
     this.onProgress = options.onProgress;
     this.startedAt = options.startedAt ?? Date.now();
+    this.signal = options.signal;
   }
 
   rotateToken(): void {
     if (typeof this.tokenOrProvider === "function") {
       this.currentToken = this.tokenOrProvider();
-      this.tokenFingerprint = simpleTokenFingerprint(this.currentToken);
+      this.tokenFingerprint = computeTokenFingerprintSync(this.currentToken);
     }
   }
 
@@ -124,6 +152,7 @@ export class GitHubClient {
     message: string,
     meta?: Partial<AnalysisProgressEvent>,
   ) {
+    if (this.signal?.aborted) return;
     this.onProgress?.({
       kind,
       phase,
@@ -145,6 +174,7 @@ export class GitHubClient {
       retries?: number;
     } = {},
   ): Promise<{ data: T; headers: Headers; cached: boolean }> {
+    if (this.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const bucket = options.bucket ?? "rest";
     const label = options.label ?? path;
     const url = path.startsWith("http") ? path : `https://api.github.com${path}`;
@@ -165,6 +195,7 @@ export class GitHubClient {
 
     const retries = options.retries ?? 2;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
+      if (this.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
         this.budget.take(bucket, label);
       } catch (error) {
@@ -182,8 +213,8 @@ export class GitHubClient {
         attempt: attempt + 1,
       });
 
-      const timeoutSignal = AbortSignal.timeout(15_000);
-      const response = await fetch(url, { headers: this.headers(options.headers), signal: timeoutSignal });
+      const effectiveSignal = combineSignals(15_000, this.signal);
+      const response = await fetch(url, { headers: this.headers(options.headers), signal: effectiveSignal });
       this.emit("request-complete", bucket === "search" ? "public-activity" : "github-request", `${bucket.toUpperCase()} ${label} returned ${response.status}`, {
         bucket,
         label,
@@ -211,7 +242,7 @@ export class GitHubClient {
             statusCode: response.status,
             retryAfterMs: delayMs,
           });
-          await sleep(delayMs);
+          await sleep(delayMs, this.signal);
           continue;
         }
       }
@@ -245,6 +276,7 @@ export class GitHubClient {
   }
 
   async graphql<T>(query: string, variables: Record<string, unknown> = {}, label = "GraphQL batch"): Promise<T> {
+    if (this.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const cacheKey = `graphql:${this.tokenFingerprint}:${JSON.stringify({ query, variables })}`;
     const cached = readEndpointCache<T>(cacheKey);
     if (cached) {
@@ -269,12 +301,12 @@ export class GitHubClient {
       method: "POST",
       attempt: 1,
     });
-    const timeoutSignal = AbortSignal.timeout(15_000);
+    const effectiveSignal = combineSignals(15_000, this.signal);
     const response = await fetch("https://api.github.com/graphql", {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ query, variables }),
-      signal: timeoutSignal,
+      signal: effectiveSignal,
     });
     this.emit("request-complete", "graphql", `GRAPHQL ${label} returned ${response.status}`, {
       bucket: "graphql",

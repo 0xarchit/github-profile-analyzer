@@ -46,6 +46,7 @@ interface CollectionOptions {
   profile?: AnalysisModeProfile;
   onProgress?: AnalysisProgressCallback;
   startedAt?: number;
+  signal?: AbortSignal;
 }
 
 const emptySearch = (): SearchSummary => ({
@@ -73,6 +74,7 @@ const parseRepoFromApiUrl = (url: string) => {
 };
 
 const recordFailure = (unavailable: Record<string, string>, label: string, error: unknown) => {
+  if (error instanceof DOMException && error.name === "AbortError") return;
   if (error instanceof BudgetExceededError) unavailable[label] = error.message;
   else if (error instanceof GitHubRequestError) unavailable[label] = `${error.status}: ${error.message}`;
   else unavailable[label] = error instanceof Error ? error.message : String(error);
@@ -87,6 +89,7 @@ async function safe<T>(
   try {
     return await operation();
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     recordFailure(unavailable, label, error);
     return fallback;
   }

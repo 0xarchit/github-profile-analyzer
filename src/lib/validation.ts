@@ -1,10 +1,15 @@
 import { z } from "zod";
 
+export const GITHUB_USERNAME_REGEX = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
+
 export const UsernameSchema = z
   .string()
   .min(1)
-  .max(100)
-  .regex(/^[a-zA-Z0-9_-]+$/, "Invalid GitHub username format");
+  .max(39)
+  .regex(
+    GITHUB_USERNAME_REGEX,
+    "Invalid GitHub username. Must be 1-39 alphanumeric characters with only single internal hyphens.",
+  );
 
 export const RepositorySchema = z.object({
   name: z.string(),
