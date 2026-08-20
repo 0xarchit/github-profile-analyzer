@@ -340,7 +340,12 @@ export const rule4_27DependencyEcosystems: ChartRule = (data) => {
 
 export const rule4_28SecuritySeverities: ChartRule = () =>
   chart(
-    oauthOnly("4.28", "Security alert severities", "GET /repos/{o}/{r}/code-scanning/alerts + dependabot (Requires fine-grained repository security manager permissions)"),
+    unavailable(
+      "4.28",
+      "Security alert severities",
+      "GitHub vulnerability alerts (Dependabot & Code Scanning) are private to repository administrators and excluded.",
+      "code-scanning + Dependabot",
+    ),
     "donut",
   );
 

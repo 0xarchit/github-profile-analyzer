@@ -246,7 +246,7 @@ export const rule1_25ReleaseCadence: BaselineRule = (data) => {
 export const rule1_26ReleaseDownloads: BaselineRule = (data) => {
   const byRepo = Object.entries(data.releases).map(([repository, releases]) => ({
     repository,
-    downloads: releases.flatMap((release) => release.assets).reduce((sum, asset) => sum + asset.download_count, 0),
+    downloads: releases.flatMap((release) => release.assets ?? []).reduce((sum, asset) => sum + (asset?.download_count ?? 0), 0),
   }));
   return moderateSample("1.26", "Release asset downloads", {
     total: byRepo.reduce((sum, item) => sum + item.downloads, 0),

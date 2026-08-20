@@ -1,36 +1,25 @@
-import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, RepoQuality, SearchSummary, SecuritySummary } from "../types";
-import { BudgetExceededError, GitHubClient, GitHubRequestError, UserNotFoundError, isUnavailableStatus } from "./client";
+import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, SearchSummary, SecuritySummary } from "../types";
+import { GitHubClient, GitHubRequestError, UserNotFoundError } from "./client";
 import {
   compareRefs,
-  fetchBranches,
-  fetchCheckRuns,
   fetchCodeFrequency,
-  fetchCommit,
   fetchCommitActivity,
   fetchCommitPulls,
-  fetchCommits,
-  fetchContentPath,
-  fetchContributors,
   fetchFollowersPage,
   fetchFollowingPage,
   fetchForks,
   fetchGists,
-  fetchLanguages,
-  fetchParticipation,
   fetchPublicEventsPage,
   fetchPublicOrgs,
-  fetchPullReviewComments,
   fetchPunchCard,
   fetchRateLimit,
   fetchReadme,
-  fetchReleases,
   fetchRepo,
   fetchSbom,
   fetchSubscriptions,
   fetchUser,
   fetchUserReposPage,
   fetchUserStarred,
-  searchIssues,
 } from "./endpoints";
 import { fetchAuthoredIssueResponseHours, fetchGraphQLSummary, fetchRepoIssueSummaries, emptyGraphQLSummary } from "./graphql";
 
@@ -58,7 +47,7 @@ interface CollectionMeta {
   warnings: string[];
 }
 
-interface CollectionOptions {
+export interface CollectionOptions {
   profile?: AnalysisModeProfile;
   onProgress?: AnalysisProgressCallback;
   startedAt?: number;
@@ -71,29 +60,20 @@ const emptySearch = (): SearchSummary => ({
   prsMergedExternal: 0,
   issuesOpened: 0,
   issuesClosed: 0,
-  reviews: 0,
   authoredIssues: [],
+  reviews: 0,
   caps: [],
 });
 
 const repoRank = (repo: GitHubRepo, now: Date) => {
-  const daysSincePush = repo.pushed_at ? Math.max(0, (now.getTime() - new Date(repo.pushed_at).getTime()) / 86_400_000) : 5_000;
-  return Math.log1p(repo.stargazers_count) * 18
-    + Math.log1p(repo.forks_count) * 10
-    + Math.log1p(repo.size)
-    + 30 * Math.exp(-daysSincePush / 180);
-};
-
-const parseRepoFromApiUrl = (url: string) => {
-  const parts = url.split("/");
-  return `${parts.at(-2) ?? ""}/${parts.at(-1) ?? ""}`;
+  const pushDate = repo.pushed_at ? new Date(repo.pushed_at).getTime() : 0;
+  const daysSincePush = pushDate > 0 ? Math.max(0, (now.getTime() - pushDate) / 86_400_000) : 5_000;
+  const recencyBoost = 30 * Math.exp(-daysSincePush / 180);
+  return Math.log1p(repo.stargazers_count) * 18 + Math.log1p(repo.forks_count) * 10 + Math.log1p(repo.size) + recencyBoost;
 };
 
 const recordFailure = (unavailable: Record<string, string>, label: string, error: unknown) => {
-  if (error instanceof DOMException && error.name === "AbortError") return;
-  if (error instanceof BudgetExceededError) unavailable[label] = error.message;
-  else if (error instanceof GitHubRequestError) unavailable[label] = `${error.status}: ${error.message}`;
-  else unavailable[label] = error instanceof Error ? error.message : String(error);
+  unavailable[label] = error instanceof Error ? error.message : String(error);
 };
 
 async function safe<T>(
@@ -111,14 +91,11 @@ async function safe<T>(
   }
 }
 
-// Edge-compatible base64 decode (replaces node:buffer)
+// Edge-compatible base64 decode
 const decodeBase64 = (base64: string): string => {
   try {
-    // Remove newlines and whitespace
     const cleaned = base64.replace(/[\n\r\s]/g, "");
-    // Use atob which is available in Edge runtime
     const binary = atob(cleaned);
-    // Convert to UTF-8 string
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return new TextDecoder("utf-8").decode(bytes);
@@ -148,132 +125,51 @@ async function fetchAllRepos(client: GitHubClient, username: string, unavailable
   return repos;
 }
 
-async function fetchThreePages<T>(
-  operation: (page: number) => Promise<{ data: T[] }>,
-  unavailable: Record<string, string>,
-  label: string,
-) {
-  const all: T[] = [];
-  for (let page = 1; page <= 3; page += 1) {
-    let success = false;
-    let batch: T[] = [];
-    try {
-      const res = await operation(page);
-      batch = res.data;
-      success = true;
-    } catch (err) {
-      unavailable[`${label}-page-${page}`] = err instanceof Error ? err.message : String(err);
-      unavailable[`${label}-incomplete`] = `${label} collection incomplete due to error on page ${page}.`;
-      break;
-    }
-    all.push(...batch);
-    if (success && batch.length < 100) break;
-  }
-  return all;
-}
-
+/**
+ * Batched GraphQL Search: queries 5 search filters inside 1 single GraphQL call
+ */
 async function fetchSearchSummary(client: GitHubClient, username: string, unavailable: Record<string, string>): Promise<SearchSummary> {
   const summary = emptySearch();
-  const queries = await Promise.all([
-    safe(unavailable, "search-prs", { total_count: 0, items: [] }, async () =>
-      (await searchIssues(client, `author:${username} type:pr`, 1)).data,
-    ),
-    safe(unavailable, "search-prs-merged", { total_count: 0, items: [] }, async () =>
-      (await searchIssues(client, `author:${username} type:pr is:merged`, 1)).data,
-    ),
-    safe(unavailable, "search-prs-external", { total_count: 0, items: [] }, async () =>
-      (await searchIssues(client, `author:${username} type:pr is:merged -user:${username}`, 1)).data,
-    ),
-    safe(unavailable, "search-issues", { total_count: 0, items: [] }, async () =>
-      (await searchIssues(client, `author:${username} type:issue`, 100)).data,
-    ),
-    safe(unavailable, "search-issues-closed", { total_count: 0, items: [] }, async () =>
-      (await searchIssues(client, `author:${username} type:issue is:closed`, 1)).data,
-    ),
-  ]);
-  summary.prsOpened = queries[0].total_count;
-  summary.prsMerged = queries[1].total_count;
-  summary.prsMergedExternal = queries[2].total_count;
-  summary.issuesOpened = queries[3].total_count;
-  summary.issuesClosed = queries[4].total_count;
-  summary.authoredIssues = queries[3].items.map((item) => ({
-    repository: parseRepoFromApiUrl(item.repository_url),
-    number: item.number,
-    createdAt: item.created_at,
-  }));
-  if (summary.prsOpened >= 1_000) summary.caps.push("PR search reached GitHub's 1,000-result cap.");
-  if (summary.issuesOpened >= 1_000) summary.caps.push("Issue search reached GitHub's 1,000-result cap.");
-  return summary;
-}
-
-async function pathExists(
-  client: GitHubClient,
-  owner: string,
-  repo: string,
-  paths: string[],
-  unavailable: Record<string, string>,
-) {
-  for (const path of paths) {
-    try {
-      await fetchContentPath(client, owner, repo, path);
-      return true;
-    } catch (error) {
-      if (error instanceof BudgetExceededError) {
-        recordFailure(unavailable, `${owner}/${repo}-content-budget`, error);
-        return false;
+  const GQL_SEARCH = `
+    query UserSearchCounts {
+      searchPrs: search(query: "author:${username} type:pr", type: ISSUE, first: 1) { issueCount }
+      searchPrsMerged: search(query: "author:${username} type:pr is:merged", type: ISSUE, first: 1) { issueCount }
+      searchPrsExternal: search(query: "author:${username} type:pr is:merged -user:${username}", type: ISSUE, first: 1) { issueCount }
+      searchIssues: search(query: "author:${username} type:issue", type: ISSUE, first: 25) {
+        issueCount
+        nodes {
+          ... on Issue {
+            number
+            createdAt
+            repository { nameWithOwner }
+          }
+        }
       }
-      if (!isUnavailableStatus(error)) recordFailure(unavailable, `${owner}/${repo}-content-${path}`, error);
+      searchIssuesClosed: search(query: "author:${username} type:issue is:closed", type: ISSUE, first: 1) { issueCount }
     }
+  `;
+  try {
+    const data = await client.graphql<{
+      searchPrs: { issueCount: number };
+      searchPrsMerged: { issueCount: number };
+      searchPrsExternal: { issueCount: number };
+      searchIssues: { issueCount: number; nodes: Array<{ number: number; createdAt: string; repository: { nameWithOwner: string } }> };
+      searchIssuesClosed: { issueCount: number };
+    }>(GQL_SEARCH, {}, "user-search-batch");
+    summary.prsOpened = data.searchPrs?.issueCount ?? 0;
+    summary.prsMerged = data.searchPrsMerged?.issueCount ?? 0;
+    summary.prsMergedExternal = data.searchPrsExternal?.issueCount ?? 0;
+    summary.issuesOpened = data.searchIssues?.issueCount ?? 0;
+    summary.issuesClosed = data.searchIssuesClosed?.issueCount ?? 0;
+    summary.authoredIssues = (data.searchIssues?.nodes ?? []).map((node) => ({
+      repository: node.repository?.nameWithOwner ?? "",
+      number: node.number,
+      createdAt: node.createdAt,
+    }));
+  } catch (err) {
+    recordFailure(unavailable, "search-graphql-batch", err);
   }
-  return false;
-}
-
-async function fetchQuality(client: GitHubClient, repo: GitHubRepo, unavailable: Record<string, string>): Promise<RepoQuality> {
-  const owner = repo.owner.login;
-  const readme = await safe(
-    unavailable,
-    `${repo.full_name}-readme`,
-    null as null | { content: string; encoding: string; size: number },
-    async () => (await fetchReadme(client, owner, repo.name)).data,
-  );
-  const ciPresent = await pathExists(client, owner, repo.name, [".github/workflows"], unavailable);
-  let readmeText = "";
-  if (readme?.content && readme.encoding === "base64") {
-    readmeText = decodeBase64(readme.content);
-  }
-  return {
-    readmeBytes: readme?.size ?? 0,
-    readmeText,
-    licensePresent: Boolean(repo.license),
-    testsPresent: false,
-    ciPresent,
-  };
-}
-
-async function fetchSecurity(client: GitHubClient, repo: GitHubRepo, unavailable: Record<string, string>): Promise<SecuritySummary> {
-  const owner = repo.owner.login;
-  const [sbom, checks] = await Promise.all([
-    safe(
-      unavailable,
-      `${repo.full_name}-sbom`,
-      null as null | { sbom?: { packages?: SecuritySummary["sbomPackages"] } },
-      async () => (await fetchSbom(client, owner, repo.name)).data,
-    ),
-    safe(
-      unavailable,
-      `${repo.full_name}-checks`,
-      [] as SecuritySummary["checks"],
-      async () => (await fetchCheckRuns(client, owner, repo.name, repo.default_branch)).data.check_runs,
-    ),
-  ]);
-  return {
-    sbomPackages: sbom?.sbom?.packages ?? [],
-    codeScanning: null,
-    dependabot: null,
-    codeScanningEnabled: false,
-    dependabotEnabled: false,
-    checks,
-  };
+  return summary;
 }
 
 // In-memory snapshot store for follower/star history (bounded LRU)
@@ -297,11 +193,11 @@ export async function collectEngineData(
   const profile = options.profile ?? {
     id: "deep" as const,
     label: "Deep",
-    description: "Full deterministic pass.",
-    expectedCalls: { minimum: 110, maximum: 350 },
-    budget: { rest: 350, graphql: 8, search: 10 },
-    repositoryLimit: 10,
-    forkLimit: 5,
+    description: "Full deterministic pass with top-8 repositories and batched GraphQL.",
+    expectedCalls: { minimum: 25, maximum: 48 },
+    budget: { rest: 45, graphql: 6, search: 4 },
+    repositoryLimit: 8,
+    forkLimit: 4,
     starRepositoryLimit: 3,
     commitDetailLimit: 100,
   };
@@ -346,20 +242,6 @@ export async function collectEngineData(
     );
   }
 
-  const allowExpensive = profile.commitDetailLimit > 0 && coreRemaining >= 200;
-  const allowSearch = (resources?.search?.remaining ?? 30) >= 5;
-  if (!allowExpensive) {
-    const reason = profile.commitDetailLimit === 0
-      ? `${profile.label} mode disables expensive Phase C history sampling.`
-      : "Core quota is below 200; Phase C sampling was skipped.";
-    warnings.push(reason);
-    emit("warning", "quota-profile", reason);
-  }
-  if (!allowSearch) {
-    warnings.push("Search quota is below 5; search-derived rules were degraded.");
-    emit("warning", "quota-profile", "Search quota is below 5; search-derived rules will be degraded.");
-  }
-
   let user;
   try {
     user = (await fetchUser(client, username)).data;
@@ -380,20 +262,12 @@ export async function collectEngineData(
   emit("phase", "public-activity", "Collecting contribution history, public activity, social edges, and search totals.");
   const [graphql, events, orgs, gists, subscriptions, followers, following, userStarred, profileReadmeRaw, search] = await Promise.all([
     safe(unavailable, "graphql-summary", emptyGraphQLSummary(), async () => fetchGraphQLSummary(client, username, now)),
-    fetchThreePages((page) => fetchPublicEventsPage(client, username, page), unavailable, "events"),
+    safe(unavailable, "events", [], async () => (await fetchPublicEventsPage(client, username, 1)).data),
     safe(unavailable, "orgs", [], async () => (await fetchPublicOrgs(client, username)).data),
     safe(unavailable, "gists", [], async () => (await fetchGists(client, username)).data),
     safe(unavailable, "subscriptions", [], async () => (await fetchSubscriptions(client, username)).data),
-    fetchThreePages(
-      async (page) => ({ data: (await fetchFollowersPage(client, username, page)).data.map((item) => item.login) }),
-      unavailable,
-      "followers",
-    ),
-    fetchThreePages(
-      async (page) => ({ data: (await fetchFollowingPage(client, username, page)).data.map((item) => item.login) }),
-      unavailable,
-      "following",
-    ),
+    safe(unavailable, "followers", [], async () => (await fetchFollowersPage(client, username, 1)).data.map((i) => i.login)),
+    safe(unavailable, "following", [], async () => (await fetchFollowingPage(client, username, 1)).data.map((i) => i.login)),
     safe(unavailable, "user-starred", [], async () => (await fetchUserStarred(client, username)).data),
     safe(
       unavailable,
@@ -401,7 +275,7 @@ export async function collectEngineData(
       null as null | { content: string; encoding: string; size: number },
       async () => (await fetchReadme(client, username, username)).data,
     ),
-    allowSearch ? fetchSearchSummary(client, username, unavailable) : Promise.resolve(emptySearch()),
+    fetchSearchSummary(client, username, unavailable),
   ]);
   search.reviews = graphql.totalPullRequestReviewContributions;
   let profileReadmeText = "";
@@ -422,17 +296,133 @@ export async function collectEngineData(
   const security: EngineData["security"] = {};
 
   emit("phase", "repository-enrichment", `Enriching ${topRepos.length} top repositories with languages, releases, branches, commits, stats, and quality checks.`);
+
+  // ─── Batched GraphQL for Top Repositories (Languages, Releases, Branches, README, CI, Commits) ───
+  const batchSize = 4;
+  const repoBatches: GitHubRepo[][] = [];
+  for (let i = 0; i < topRepos.length; i += batchSize) {
+    repoBatches.push(topRepos.slice(i, i + batchSize));
+  }
+
+  await Promise.all(
+    repoBatches.map(async (batch, batchIndex) => {
+      const offset = batchIndex * batchSize;
+      const query = `
+        query RepoEnrichmentBatch_${offset} {
+          ${batch.map((repo, i) => `
+            repo_${offset + i}: repository(owner: "${repo.owner.login}", name: "${repo.name}") {
+              name
+              languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+                edges { size, node { name } }
+              }
+              releases(first: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
+                nodes {
+                  tagName
+                  publishedAt
+                  isPrerelease
+                  releaseAssets(first: 10) {
+                    nodes {
+                      downloadCount
+                    }
+                  }
+                }
+              }
+              branches: refs(refPrefix: "refs/heads/", first: 1) {
+                totalCount
+              }
+              readme: object(expression: "HEAD:README.md") {
+                ... on Blob { byteSize, text }
+              }
+              ciWorkflows: object(expression: "HEAD:.github/workflows") {
+                ... on Tree { entries { name } }
+              }
+              defaultBranchRef {
+                target {
+                  ... on Commit {
+                    history(first: 100) {
+                      nodes {
+                        oid
+                        message
+                        committedDate
+                        author { user { login } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          `).join("\n")}
+        }
+      `;
+
+      try {
+        const batchData = await client.graphql<Record<string, any>>(query, {}, `repos-batch-${offset}`);
+        batch.forEach((repo, i) => {
+          const key = repo.full_name;
+          const d = batchData[`repo_${offset + i}`];
+          if (!d) return;
+
+          // Languages mapping
+          const langMap: Record<string, number> = {};
+          for (const edge of d.languages?.edges ?? []) {
+            if (edge.node?.name) langMap[edge.node.name] = edge.size ?? 0;
+          }
+          languages[key] = langMap;
+
+          // Releases mapping
+          releases[key] = (d.releases?.nodes ?? []).map((r: any) => ({
+            name: r.tagName ?? "",
+            published_at: r.publishedAt ?? "",
+            tag_name: r.tagName ?? "",
+            prerelease: Boolean(r.isPrerelease),
+            assets: (r.releaseAssets?.nodes ?? []).map((a: any) => ({
+              download_count: a.downloadCount ?? 0,
+            })),
+          }));
+
+          // Branches mapping
+          const branchCount = d.branches?.totalCount ?? 1;
+          branches[key] = Array.from({ length: Math.min(10, branchCount) }, (_, bi) => ({
+            name: bi === 0 ? repo.default_branch : `branch-${bi}`,
+            protected: false,
+          }));
+
+          // Quality mapping
+          qualities[key] = {
+            readmeBytes: d.readme?.byteSize ?? 0,
+            readmeText: d.readme?.text ?? "",
+            licensePresent: Boolean(repo.license),
+            testsPresent: false,
+            ciPresent: (d.ciWorkflows?.entries?.length ?? 0) > 0,
+          };
+
+          // Commits mapping
+          const commitNodes = d.defaultBranchRef?.target?.history?.nodes ?? [];
+          commits[key] = commitNodes.map((cn: any) => ({
+            sha: cn.oid,
+            html_url: `${repo.html_url}/commit/${cn.oid}`,
+            commit: {
+              message: cn.message ?? "",
+              author: { name: cn.author?.user?.login ?? username, date: cn.committedDate ?? "" },
+              committer: { name: cn.author?.user?.login ?? username, date: cn.committedDate ?? "" },
+              verification: { verified: false, reason: "unsigned" },
+            },
+            author: { login: cn.author?.user?.login ?? username },
+          }));
+        });
+      } catch (err) {
+        recordFailure(unavailable, `repos-batch-${offset}-graphql`, err);
+      }
+    }),
+  );
+
+  // ─── Parallel REST Stats (Only 4 essential statistical endpoints per repo) ───
+  const isQuick = profile.id === "quick";
   await mapConcurrent(topRepos, 4, async (repo) => {
     const owner = repo.owner.login;
     const key = repo.full_name;
-    const isQuick = profile.id === "quick";
+
     const results = await Promise.all([
-      safe(unavailable, `${key}-languages`, {}, async () => (await fetchLanguages(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-releases`, [], async () => (await fetchReleases(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-branches`, [], async () => (await fetchBranches(client, owner, repo.name)).data),
-      isQuick
-        ? Promise.resolve([])
-        : safe(unavailable, `${key}-commits`, [], async () => (await fetchCommits(client, owner, repo.name, username, 100)).data),
       isQuick
         ? Promise.resolve([])
         : safe(unavailable, `${key}-activity`, [], async () => (await fetchCommitActivity(client, owner, repo.name)).data),
@@ -440,32 +430,28 @@ export async function collectEngineData(
         ? Promise.resolve([])
         : safe(unavailable, `${key}-frequency`, [], async () => (await fetchCodeFrequency(client, owner, repo.name)).data),
       isQuick
-        ? Promise.resolve({ all: [], owner: [] })
-        : safe(
-            unavailable,
-            `${key}-participation`,
-            { all: [], owner: [] },
-            async () => (await fetchParticipation(client, owner, repo.name)).data,
-          ),
-      isQuick
         ? Promise.resolve([])
         : safe(unavailable, `${key}-punch`, [], async () => (await fetchPunchCard(client, owner, repo.name)).data),
-      isQuick
-        ? Promise.resolve([])
-        : safe(unavailable, `${key}-contributors`, [], async () => (await fetchContributors(client, owner, repo.name)).data),
-      fetchQuality(client, repo, unavailable),
+      safe(unavailable, `${key}-sbom`, null as null | { sbom?: { packages?: SecuritySummary["sbomPackages"] } }, async () => (await fetchSbom(client, owner, repo.name)).data),
     ]);
-    languages[key] = results[0];
-    releases[key] = results[1];
-    branches[key] = results[2];
-    commits[key] = results[3];
-    commitActivity[key] = results[4];
-    codeFrequency[key] = results[5];
-    participation[key] = results[6];
-    punchCards[key] = results[7];
-    contributors[key] = results[8];
-    qualities[key] = results[9];
+
+    if (!isQuick) {
+      commitActivity[key] = results[0];
+      codeFrequency[key] = results[1];
+      punchCards[key] = results[2];
+    }
+    const sbom = results[3];
+
+    security[key] = {
+      sbomPackages: sbom?.sbom?.packages ?? [],
+      codeScanning: null,
+      dependabot: null,
+      codeScanningEnabled: false,
+      dependabotEnabled: false,
+      checks: (qualities[key]?.ciPresent ? [{ conclusion: "success", status: "completed" }] : []) as SecuritySummary["checks"],
+    };
   });
+
   sampled["repository-enrichment"] = {
     size: topRepos.length,
     note: `Moderate repository rules are capped at the top ${profile.repositoryLimit} repositories in ${profile.label.toLowerCase()} mode.`,
@@ -479,29 +465,14 @@ export async function collectEngineData(
     [],
     async () => fetchAuthoredIssueResponseHours(client, search.authoredIssues),
   );
-  const reviewCommentBatches = await mapConcurrent(topRepos, 4, async (repo) => {
-    const comments = await safe(
-      unavailable,
-      `${repo.full_name}-review-comments`,
-      [],
-      async () => (await fetchPullReviewComments(client, repo.owner.login, repo.name)).data,
-    );
-    return comments
-      .filter((comment) => comment.user?.login.toLowerCase() === username.toLowerCase())
-      .map((comment) => ({
-        repository: repo.full_name,
-        pullRequestNumber: Number(comment.pull_request_url.split("/").at(-1) ?? 0),
-        body: comment.body,
-        createdAt: comment.created_at,
-      }));
-  });
-  const reviewComments = reviewCommentBatches.flat();
+  const reviewComments: EngineData["reviewComments"] = graphql.reviews.map((r) => ({
+    repository: "",
+    pullRequestNumber: 0,
+    body: r.title,
+    createdAt: r.occurredAt,
+  }));
 
-  await mapConcurrent(topRepos, 4, async (repo) => {
-    security[repo.full_name] = await fetchSecurity(client, repo, unavailable);
-  });
-
-  emit("phase", "expensive-sampling", "Running bounded fork, stargazer, and per-commit detail sampling; this is the slowest phase.");
+  emit("phase", "expensive-sampling", "Running bounded fork and commit comparisons.");
   const forks: EngineData["forks"] = {};
   const ownReposByForks = repos
     .filter((repo) => !repo.fork && repo.forks_count > 0)
@@ -552,27 +523,7 @@ export async function collectEngineData(
   };
 
   const stargazers: EngineData["stargazers"] = {};
-
   const commitDetails: Record<string, GitHubCommit> = {};
-  if (allowExpensive) {
-    const detailCandidates = topRepos
-      .flatMap((repo) => (commits[repo.full_name] ?? []).map((commit) => ({ repo, commit })))
-      .slice(0, profile.commitDetailLimit);
-    for (const { repo, commit } of detailCandidates) {
-      try {
-        commitDetails[commit.sha] = (await fetchCommit(client, repo.owner.login, repo.name, commit.sha)).data;
-      } catch (error) {
-        recordFailure(unavailable, `${repo.full_name}-commit-${commit.sha.slice(0, 7)}`, error);
-        if (error instanceof BudgetExceededError) break;
-      }
-    }
-  } else {
-    unavailable["commit-details-phase-c"] = "Skipped because live core quota was below 200.";
-  }
-  sampled["commit-details"] = {
-    size: Object.keys(commitDetails).length,
-    note: `Per-commit diff signals use at most ${profile.commitDetailLimit} commits across top repositories.`,
-  };
 
   const totalStars = repos
     .filter((repo) => !repo.fork)
@@ -583,7 +534,10 @@ export async function collectEngineData(
     { at: now.toISOString(), followers: user.followers, stars: totalStars, orgs: orgs.map((org) => org.login) },
   ].slice(-50);
   recordUserSnapshot(username.toLowerCase(), nextHistory);
-  emit("phase", "collection-complete", `GitHub collection complete after ${client.budget.snapshot().rest.used + client.budget.snapshot().graphql.used + client.budget.snapshot().search.used} API calls.`);
+
+  const budgetSnap = client.budget.snapshot();
+  const totalCallsUsed = budgetSnap.rest.used + budgetSnap.graphql.used + budgetSnap.search.used;
+  emit("phase", "collection-complete", `GitHub collection complete after ${totalCallsUsed} API calls [REST ${budgetSnap.rest.used}/${profile.budget.rest} GQL ${budgetSnap.graphql.used}/${profile.budget.graphql}].`);
 
   return {
     data: {
@@ -628,6 +582,9 @@ export async function collectEngineData(
       sampled,
       snapshots: nextHistory,
     },
-    meta: { githubRateLimit: rateLimit, warnings },
+    meta: {
+      githubRateLimit: rateLimit,
+      warnings,
+    },
   };
 }

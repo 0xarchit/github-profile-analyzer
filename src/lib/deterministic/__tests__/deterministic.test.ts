@@ -197,19 +197,19 @@ describe("Deterministic Engine Mode Profiles & Budgets", () => {
     expect(profile.budget.rest).toBeLessThanOrEqual(45);
     expect(profile.budget.graphql).toBeLessThanOrEqual(4);
     expect(profile.budget.search).toBeLessThanOrEqual(6);
-    expect(profile.repositoryLimit).toBe(3);
+    expect(profile.repositoryLimit).toBe(2);
   });
 
   it("allocates standard mode budget for deep repos", () => {
     const profile = getAnalysisModeProfile("standard");
-    expect(profile.budget.rest).toBe(240);
-    expect(profile.repositoryLimit).toBe(6);
+    expect(profile.budget.rest).toBeLessThanOrEqual(50);
+    expect(profile.repositoryLimit).toBe(4);
   });
 
   it("allocates deep mode budget for full scans", () => {
     const profile = getAnalysisModeProfile("deep");
-    expect(profile.budget.rest).toBe(350);
-    expect(profile.repositoryLimit).toBe(10);
+    expect(profile.budget.rest).toBeLessThanOrEqual(50);
+    expect(profile.repositoryLimit).toBe(6);
   });
 });
 

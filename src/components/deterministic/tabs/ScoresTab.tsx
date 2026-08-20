@@ -102,6 +102,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
                 {r.license && <span className="text-green-700">Lic</span>}
                 {r.tests && <span className="text-green-700">Test</span>}
                 {r.ci && <span className="text-green-700">CI</span>}
+                {r.securityCoverage > 0 && <span className="text-cyan-700">Sec</span>}
                 <span className="text-gray-400">Rel:{r.releases}</span>
               </div>
             ))}

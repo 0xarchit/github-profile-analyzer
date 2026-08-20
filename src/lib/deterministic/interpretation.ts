@@ -551,7 +551,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
       tests: Boolean(quality?.ciPresent),
       ci: Boolean(quality?.ciPresent),
       releases: data.releases[repo.full_name]?.length ?? 0,
-      securityCoverage: hasSbom || (security?.checks.length ?? 0) > 0 ? 100 : 0,
+      securityCoverage: (hasSbom ? 60 : 0) + (quality?.ciPresent ? 40 : 0),
       activeAlerts,
     };
   });
@@ -561,7 +561,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
   const testCoverage = ratio(repositories.filter((repo) => repo.tests).length, denominator);
   const ciCoverage = ratio(repositories.filter((repo) => repo.ci).length, denominator);
   const releaseCoverage = ratio(repositories.filter((repo) => repo.releases > 0).length, denominator);
-  const securityCoverage = ratio(repositories.filter((repo) => repo.securityCoverage > 0).length, denominator);
+  const securityCoverage = ratio(repositories.reduce((sum, repo) => sum + repo.securityCoverage, 0), denominator * 100);
   const score = round(weightedAverage([[documentationCoverage * 100, 0.25], [licenseCoverage * 100, 0.25], [ciCoverage * 100, 0.25], [releaseCoverage * 100, 0.15], [securityCoverage * 100, 0.1]]), 1);
   return {
     score,
@@ -573,7 +573,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
     releaseCoverage: round(releaseCoverage, 4),
     securityCoverage: round(securityCoverage, 4),
     repositories,
-    sourceIds: ["1.15", "2.6", "2.10", "2.12", "4.27", "4.28"],
+    sourceIds: ["1.15", "2.6", "2.10", "2.12", "4.27"],
   };
 }
 

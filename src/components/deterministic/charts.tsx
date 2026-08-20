@@ -451,38 +451,6 @@ export function LanguageRepoHeatmap({ data }: { data: { languages: string[]; rep
   );
 }
 
-export function SecuritySeverities({ data }: { data: { codeScanning: Record<string, number>; dependabot: Record<string, number> } }) {
-  if (!data) return null;
-  const severityColors: Record<string, string> = { critical: "#ef4444", high: "#f97316", medium: "#facc15", low: "#06b6d4", unknown: "#64748b" };
-  const codeScanning = data.codeScanning ?? {};
-  const dependabot = data.dependabot ?? {};
-  const allSeverities = [...new Set([...Object.keys(codeScanning), ...Object.keys(dependabot)])];
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {[["Code Scanning", codeScanning], ["Dependabot", dependabot]].map(([label, counts]) => {
-        const obj = counts as Record<string, number>;
-        const total = Object.values(obj).reduce((s, v) => s + v, 0);
-        return (
-          <div key={label as string} className="rounded-lg p-3" style={{ background: "#f8f7f0" }}>
-            <div className="text-[10px] font-heading text-gray-600 mb-2">{label as string} ({total} alerts)</div>
-            <div className="space-y-1.5">
-              {allSeverities.map((sev) => (
-                <div key={sev} className="flex items-center gap-2">
-                  <span className="text-[9px] w-16 text-right" style={{ color: severityColors[sev] ?? "#64748b" }}>{sev}</span>
-                  <div className="flex-1 h-2 rounded-full" style={{ background: "#e8e6d8" }}>
-                    <div className="h-full rounded-full" style={{ width: `${total > 0 ? ((obj[sev] ?? 0) / total) * 100 : 0}%`, background: severityColors[sev] ?? "#64748b" }} />
-                  </div>
-                  <span className="text-[9px] text-gray-500 w-6 text-right">{obj[sev] ?? 0}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function StarHistory({ data }: { data: Array<{ repository: string; points?: Array<{ at: string; cumulative: number }> }> }) {
   if (!Array.isArray(data) || !data.length) return null;
   const validData = data.filter((d) => Array.isArray(d?.points) && d.points.length > 0);

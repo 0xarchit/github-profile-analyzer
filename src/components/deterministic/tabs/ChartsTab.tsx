@@ -19,7 +19,6 @@ import {
   RepoCreationTimeline,
   HistogramChart,
   LanguageRepoHeatmap,
-  SecuritySeverities,
 } from "../charts";
 import { ChartSection } from "../widgets";
 
@@ -152,12 +151,6 @@ export function ChartsTab({ charts }: { charts: Record<string, ChartResult> }) {
       name: "Lang x Repo",
       title: "Language by Repository",
       render: (val) => <LanguageRepoHeatmap data={val} />,
-    },
-    {
-      id: "4.28",
-      name: "Security Alerts",
-      title: "Security Alert Severities",
-      render: (val) => <SecuritySeverities data={val} />,
     },
     {
       id: "4.27",
