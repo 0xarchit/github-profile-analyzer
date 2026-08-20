@@ -117,7 +117,9 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
               colors: ["#06b6d4", "#facc15", "#ec4899", "#22c55e"],
             });
           } catch {
-            /* ignore */
+            setError("ANALYSIS_FAILURE");
+            esRef.current = null;
+            es.close();
           }
         });
 
@@ -153,6 +155,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
     [username, selectedMode],
   );
 
+  const initialLoadInitiatedRef = useRef<string | null>(null);
+
   useEffect(() => {
     const safeUsername = (username || "").toLowerCase();
     if (!username || safeUsername === "undefined" || safeUsername === "null") {
@@ -170,7 +174,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         setIsOwner(false);
       });
 
-    if (!initialData) {
+    if (!initialData && initialLoadInitiatedRef.current !== safeUsername) {
+      initialLoadInitiatedRef.current = safeUsername;
       void fetchData();
     }
   }, [username, initialData, fetchData]);

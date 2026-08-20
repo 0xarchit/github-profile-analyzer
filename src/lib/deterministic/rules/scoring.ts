@@ -39,8 +39,15 @@ export const rule2_2ConsistencyScore: ScoreRule = (data) => {
     if (running > longest) longest = running;
   }
   const activeRatio = ratio(activeDays, data.graphql.calendar.length);
-  const cv = coefficientOfVariation(weekly);
-  const consistency = weightedAverage([[saturatingScore(longest, 0.08), 0.35], [activeRatio * 100, 0.4], [clamp(100 - cv * 35), 0.25]]);
+  const cv = weekly.length ? coefficientOfVariation(weekly) : 0;
+  const pairs: Array<[number, number]> = [
+    [saturatingScore(longest, 0.08), 0.35],
+    [activeRatio * 100, 0.4],
+  ];
+  if (weekly.length > 0) {
+    pairs.push([clamp(100 - cv * 35), 0.25]);
+  }
+  const consistency = weightedAverage(pairs);
   return score("2.2", "Consistency score", consistency, "Combines streak length, active-day ratio, and inverse weekly commit variance.", "GraphQL contributionCalendar + stats/commit_activity", { longestStreak: longest, activeDaysRatio: activeRatio, weeklyCoefficientOfVariation: cv });
 };
 

@@ -358,7 +358,7 @@ export const rule3_28TopicSpam: SignalRule = (data) => {
       if (overlap >= 0.8) pairs.push({ a: repos[a]!.full_name, b: repos[b]!.full_name, overlap: round(overlap, 3) });
     }
   }
-  return signal(ok("3.28", "Topic and keyword overlap", pairs.slice(0, 50), `${pairs.length} repository pairs share at least 80% of their topic sets.`, "GET /users/{u}/repos"), pairs.length >= 5);
+  return sampledSignal("3.28", "Topic and keyword overlap", pairs.slice(0, 50), `${pairs.length} repository pairs share at least 80% of their topic sets.`, "GET /users/{u}/repos", pairs.length >= 5, repos.length, "Pairwise analysis is capped at 100 repositories.");
 };
 
 export const rule3_29RepoSimilarity: SignalRule = (data) => {
@@ -371,7 +371,7 @@ export const rule3_29RepoSimilarity: SignalRule = (data) => {
       if (similarity >= 0.8) pairs.push({ a: sampledRepos[a]!.full_name, b: sampledRepos[b]!.full_name, similarity: round(similarity, 3) });
     }
   }
-  return signal(ok("3.29", "Repository name and description similarity", pairs.slice(0, 50), `${pairs.length} near-duplicate repository pairs were found by token Jaccard similarity.`, "GET /users/{u}/repos"), pairs.length >= 5);
+  return sampledSignal("3.29", "Repository name and description similarity", pairs.slice(0, 50), `${pairs.length} near-duplicate repository pairs were found by token Jaccard similarity.`, "GET /users/{u}/repos", pairs.length >= 5, sampledRepos.length, "Pairwise analysis is capped at 100 repositories.");
 };
 
 export const rule3_30LanguageDabblerRatio: SignalRule = (data) => {

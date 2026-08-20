@@ -3,6 +3,7 @@ import {
   daysBetween,
   gini,
   mean,
+  median,
   ok,
   oauthOnly,
   ratio,
@@ -234,7 +235,7 @@ export const rule1_25ReleaseCadence: BaselineRule = (data) => {
     return {
       repository,
       count: releases.length,
-      medianCadenceDays: round(intervals.length ? (intervals.sort((a, b) => a - b)[Math.floor(intervals.length / 2)] ?? 0) : 0, 1),
+      medianCadenceDays: round(median(intervals), 1),
       latestRelease: dates.length ? new Date(dates.at(-1)!).toISOString() : null,
     };
   });
@@ -358,12 +359,13 @@ export const rule1_38ForkActivity: BaselineRule = (data) => {
     }
   }
   const ages = pushed.map((date) => daysBetween(date, data.now));
-  const medianAge = ages.length ? (ages.sort((a, b) => a - b)[Math.floor(ages.length / 2)] ?? 0) : 0;
+  const medianAge = median(ages);
+  const forkLimit = data.sampled["fork-activity"]?.size ?? 5;
   return moderateSample("1.38", "Fork activity of own repos", {
     sampledForks: pushed.length,
     medianDaysSincePush: round(medianAge, 1),
     medianPushedAt: pushed.length ? new Date(data.now.getTime() - medianAge * 86_400_000).toISOString() : null,
-  }, pushed.length ? `Median sampled fork was pushed ${round(medianAge, 1)} days ago.` : "No fork activity timestamps were available.", "GET /repos/{o}/{r}/forks", pushed.length, "Uses forks from the five most-forked owned repositories.");
+  }, pushed.length ? `Median sampled fork was pushed ${round(medianAge, 1)} days ago.` : "No fork activity timestamps were available.", "GET /repos/{o}/{r}/forks", pushed.length, `Uses forks from the ${forkLimit} most-forked owned repositories.`);
 };
 
 export const baselineRules: BaselineRule[] = [

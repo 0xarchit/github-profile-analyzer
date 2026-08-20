@@ -39,8 +39,25 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let isClosed = false;
+
       const send = (event: string, data: string) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+        if (isClosed || request.signal.aborted) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+        } catch {
+          isClosed = true;
+        }
+      };
+
+      const safeClose = () => {
+        if (isClosed) return;
+        isClosed = true;
+        try {
+          controller.close();
+        } catch {
+          /* ignore */
+        }
       };
 
       try {
@@ -78,7 +95,7 @@ export async function GET(request: NextRequest) {
               message: "Support the analyzer to unlock deterministic shards.",
             }),
           );
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -96,7 +113,7 @@ export async function GET(request: NextRequest) {
                 message: "This developer profile is set to private.",
               }),
             );
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -109,7 +126,7 @@ export async function GET(request: NextRequest) {
                 message: "Only the profile owner can force-refresh this profile.",
               }),
             );
-            controller.close();
+            safeClose();
             return;
           }
         }
@@ -151,7 +168,7 @@ export async function GET(request: NextRequest) {
                 snapshotId: savedScan.id,
               };
               send("complete", JSON.stringify(historicalResult));
-              controller.close();
+              safeClose();
               return;
             }
             // Non-owner cannot trigger new live analysis on a locked profile with no snapshots
@@ -162,7 +179,7 @@ export async function GET(request: NextRequest) {
                 message: "This profile is locked and no saved snapshot is available for the requested mode.",
               }),
             );
-            controller.close();
+            safeClose();
             return;
           }
         }
@@ -211,7 +228,7 @@ export async function GET(request: NextRequest) {
         }
 
         send("complete", JSON.stringify(result));
-        controller.close();
+        safeClose();
       } catch (error) {
         if (error instanceof UserNotFoundError) {
           send(
@@ -221,7 +238,7 @@ export async function GET(request: NextRequest) {
               message: `GitHub user @${username} was not found.`,
             }),
           );
-          controller.close();
+          safeClose();
           return;
         }
         const message = error instanceof Error ? error.message : "Unknown error";
@@ -251,7 +268,7 @@ export async function GET(request: NextRequest) {
             }),
           );
         }
-        controller.close();
+        safeClose();
       }
     },
   });
