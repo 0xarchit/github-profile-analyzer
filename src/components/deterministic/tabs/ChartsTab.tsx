@@ -20,7 +20,6 @@ import {
   HistogramChart,
   LanguageRepoHeatmap,
   SecuritySeverities,
-  StarHistory,
 } from "../charts";
 import { ChartSection } from "../widgets";
 
@@ -175,20 +174,24 @@ export function ChartsTab({ charts }: { charts: Record<string, ChartResult> }) {
     },
     {
       id: "4.15",
-      name: "Star History",
-      title: "Cumulative Star History",
-      render: (val) => <StarHistory data={val} />,
+      name: "Star Distribution",
+      title: "Star Distribution by Repository",
+      render: (val) => (
+        <BarChartHorizontal
+          items={Array.isArray(val) ? val.map((r: any) => ({ repository: r.repository ?? r.name ?? "repo", count: r.stars ?? r.count ?? 0 })) : []}
+        />
+      ),
     },
     {
       id: "4.16",
-      name: "Star Velocity",
-      title: "Star Velocity (Stars/Month)",
+      name: "Stars vs Forks",
+      title: "Stars vs Forks by Repository",
       render: (val) => (
-        <BarChartSimple
-          items={(val as any[]).map((i: any) => ({
-            week: i.month,
-            commits: i.stars,
-          }))}
+        <BarChartHorizontal
+          items={Array.isArray(val) ? val.map((r: any) => ({
+            repository: `${r.repository ?? r.name ?? "repo"} (★${r.stars ?? 0} ⑂${r.forks ?? 0})`,
+            count: (r.stars ?? 0) + (r.forks ?? 0),
+          })) : []}
         />
       ),
     },

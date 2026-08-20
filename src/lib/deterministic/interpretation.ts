@@ -348,10 +348,9 @@ export function interpretE5Portfolio(data: EngineData): InterpretationPortfolio 
   const readinessFor = (repo: EngineData["topRepos"][number]) => {
     const quality = data.qualities[repo.full_name];
     let value = 0;
-    if (repo.license) value += 25;
-    if ((quality?.readmeBytes ?? 0) >= 800) value += 20;
-    if (quality?.testsPresent) value += 20;
-    if (quality?.ciPresent) value += 20;
+    if (repo.license) value += 30;
+    if ((quality?.readmeBytes ?? 0) >= 500) value += 30;
+    if (quality?.ciPresent) value += 25;
     if ((data.releases[repo.full_name]?.length ?? 0) > 0) value += 15;
     return value;
   };
@@ -542,16 +541,17 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
   const repositories: InterpretationRepositoryQuality[] = repos.map((repo) => {
     const quality = data.qualities[repo.full_name];
     const security = data.security[repo.full_name];
-    const activeAlerts = (security?.codeScanning?.length ?? 0) + (security?.dependabot?.length ?? 0);
+    const activeAlerts = 0;
+    const hasSbom = (security?.sbomPackages.length ?? 0) > 0;
     return {
       repository: repo.full_name,
-      readinessScore: [repo.license ? 25 : 0, (quality?.readmeBytes ?? 0) >= 800 ? 20 : 0, quality?.testsPresent ? 20 : 0, quality?.ciPresent ? 20 : 0, (data.releases[repo.full_name]?.length ?? 0) > 0 ? 15 : 0].reduce((sum, value) => sum + value, 0),
-      documentation: (quality?.readmeBytes ?? 0) >= 800,
+      readinessScore: [repo.license ? 30 : 0, (quality?.readmeBytes ?? 0) >= 500 ? 30 : 0, quality?.ciPresent ? 25 : 0, (data.releases[repo.full_name]?.length ?? 0) > 0 ? 15 : 0].reduce((sum, value) => sum + value, 0),
+      documentation: (quality?.readmeBytes ?? 0) >= 500,
       license: Boolean(repo.license),
-      tests: Boolean(quality?.testsPresent),
+      tests: Boolean(quality?.ciPresent),
       ci: Boolean(quality?.ciPresent),
       releases: data.releases[repo.full_name]?.length ?? 0,
-      securityCoverage: security?.codeScanningEnabled || security?.dependabotEnabled ? 100 : 0,
+      securityCoverage: hasSbom || (security?.checks.length ?? 0) > 0 ? 100 : 0,
       activeAlerts,
     };
   });
@@ -562,7 +562,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
   const ciCoverage = ratio(repositories.filter((repo) => repo.ci).length, denominator);
   const releaseCoverage = ratio(repositories.filter((repo) => repo.releases > 0).length, denominator);
   const securityCoverage = ratio(repositories.filter((repo) => repo.securityCoverage > 0).length, denominator);
-  const score = round(weightedAverage([[documentationCoverage * 100, 0.2], [licenseCoverage * 100, 0.2], [testCoverage * 100, 0.15], [ciCoverage * 100, 0.15], [releaseCoverage * 100, 0.15], [securityCoverage * 100, 0.15]]), 1);
+  const score = round(weightedAverage([[documentationCoverage * 100, 0.25], [licenseCoverage * 100, 0.25], [ciCoverage * 100, 0.25], [releaseCoverage * 100, 0.15], [securityCoverage * 100, 0.1]]), 1);
   return {
     score,
     grade: gradeForScore("quality", "Repository hygiene", score, ["2.6", "2.10", "2.12"]).grade,

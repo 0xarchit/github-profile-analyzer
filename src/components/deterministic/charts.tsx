@@ -153,14 +153,15 @@ export function MiniRadar({ items }: { items: Array<{ id: string; label: string;
 }
 
 export function BarChartSimple({ items }: { items: Array<{ week: string; commits: number }> }) {
-  const maxVal = Math.max(1, ...items.map((i) => i.commits));
+  if (!items || !items.length) return null;
+  const maxVal = Math.max(1, ...items.map((i) => Math.max(0, i.commits ?? 0)));
   const barW = Math.max(2, Math.min(6, 600 / items.length));
   return (
     <div className="overflow-x-auto">
       <svg width={items.length * (barW + 1) + 10} height={80}>
         {items.map((item, i) => {
-          const h = (item.commits / maxVal) * 65;
-          return <rect key={i} x={5 + i * (barW + 1)} y={70 - h} width={barW} height={h} fill="#06b6d4" opacity={0.7} rx={1}><title>{`${item.week}: ${item.commits}`}</title></rect>;
+          const h = Math.max(0, ((item.commits ?? 0) / maxVal) * 65);
+          return <rect key={i} x={5 + i * (barW + 1)} y={Math.max(0, 70 - h)} width={barW} height={h} fill="#06b6d4" opacity={0.7} rx={1}><title>{`${item.week}: ${item.commits}`}</title></rect>;
         })}
         <line x1={5} y1={70} x2={5 + items.length * (barW + 1)} y2={70} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
       </svg>
@@ -169,7 +170,8 @@ export function BarChartSimple({ items }: { items: Array<{ week: string; commits
 }
 
 export function DivergingBars({ items }: { items: Array<{ week: string; additions: number; deletions: number }> }) {
-  const maxVal = Math.max(1, ...items.map((i) => Math.max(i.additions, i.deletions)));
+  if (!items || !items.length) return null;
+  const maxVal = Math.max(1, ...items.map((i) => Math.max(Math.abs(i.additions ?? 0), Math.abs(i.deletions ?? 0))));
   const barW = Math.max(2, Math.min(4, 600 / items.length));
   const midY = 50;
   return (
@@ -177,11 +179,11 @@ export function DivergingBars({ items }: { items: Array<{ week: string; addition
       <svg width={items.length * (barW + 1) + 10} height={110}>
         <line x1={5} y1={midY} x2={5 + items.length * (barW + 1)} y2={midY} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
         {items.map((item, i) => {
-          const addH = (item.additions / maxVal) * 45;
-          const delH = (item.deletions / maxVal) * 45;
+          const addH = Math.max(0, (Math.abs(item.additions ?? 0) / maxVal) * 45);
+          const delH = Math.max(0, (Math.abs(item.deletions ?? 0) / maxVal) * 45);
           return (
             <g key={i}>
-              <rect x={5 + i * (barW + 1)} y={midY - addH} width={barW} height={addH} fill="#22c55e" opacity={0.7} rx={1} />
+              <rect x={5 + i * (barW + 1)} y={Math.max(0, midY - addH)} width={barW} height={addH} fill="#22c55e" opacity={0.7} rx={1} />
               <rect x={5 + i * (barW + 1)} y={midY} width={barW} height={delH} fill="#ef4444" opacity={0.7} rx={1} />
             </g>
           );
@@ -348,7 +350,8 @@ export function StreakTimeline({ segments }: { segments: Array<{ active: boolean
 }
 
 export function BurstOverlay({ data }: { data: Array<{ date: string; count: number; rolling7: number; z: number; burst: boolean }> }) {
-  const maxCount = Math.max(1, ...data.map((d) => d.count));
+  if (!data || !data.length) return null;
+  const maxCount = Math.max(1, ...data.map((d) => Math.max(0, d.count ?? 0)));
   const w = Math.max(400, data.length * 3);
   const h = 60;
   return (
@@ -357,11 +360,11 @@ export function BurstOverlay({ data }: { data: Array<{ date: string; count: numb
         <line x1={0} y1={h} x2={w} y2={h} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
         {data.map((d, i) => {
           const x = (i / Math.max(1, data.length - 1)) * (w - 4) + 2;
-          const barH = (d.count / maxCount) * (h - 5);
+          const barH = Math.max(0, ((d.count ?? 0) / maxCount) * (h - 5));
           return (
             <g key={i}>
-              <rect x={x - 1} y={h - barH} width={2} height={barH} fill={d.burst ? "#ef4444" : "#06b6d4"} opacity={d.burst ? 0.9 : 0.4} />
-              {d.burst && <circle cx={x} cy={h - barH - 4} r={2} fill="#ef4444" />}
+              <rect x={x - 1} y={Math.max(0, h - barH)} width={2} height={barH} fill={d.burst ? "#ef4444" : "#06b6d4"} opacity={d.burst ? 0.9 : 0.4} />
+              {d.burst && <circle cx={x} cy={Math.max(2, h - barH - 4)} r={2} fill="#ef4444" />}
             </g>
           );
         })}
@@ -372,7 +375,7 @@ export function BurstOverlay({ data }: { data: Array<{ date: string; count: numb
 }
 
 export function RepoCreationTimeline({ items }: { items: Array<{ repository: string; createdAt: string; fork: boolean; stars: number }> }) {
-  const sorted = [...items].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const sorted = [...(items ?? [])].filter((i) => i?.createdAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (!sorted.length) return null;
   const minTime = new Date(sorted[0].createdAt).getTime();
   const maxTime = Math.max(...sorted.map((i) => new Date(i.createdAt).getTime()));
@@ -396,19 +399,20 @@ export function RepoCreationTimeline({ items }: { items: Array<{ repository: str
 }
 
 export function HistogramChart({ items, unit }: { items: Array<{ min: number; max: number; count: number }>; unit: string }) {
-  const maxVal = Math.max(1, ...items.map((i) => i.count));
+  if (!items || !items.length) return null;
+  const maxVal = Math.max(1, ...items.map((i) => Math.max(0, i.count ?? 0)));
   const barW = Math.min(40, Math.max(20, 400 / items.length));
   return (
     <div className="overflow-x-auto">
       <svg width={items.length * (barW + 4) + 30} height={100}>
         <line x1={25} y1={80} x2={25 + items.length * (barW + 4)} y2={80} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
         {items.map((item, i) => {
-          const barH = (item.count / maxVal) * 65;
+          const barH = Math.max(0, ((item.count ?? 0) / maxVal) * 65);
           const label = item.max === Infinity ? ">" + item.min : `${item.min}-${item.max}`;
           return (
             <g key={i}>
-              <rect x={28 + i * (barW + 4)} y={75 - barH} width={barW} height={barH} fill="#a855f7" opacity={0.6} rx={2} />
-              <text x={28 + i * (barW + 4) + barW / 2} y={75 - barH - 3} fill="#c084fc" fontSize={8} textAnchor="middle">{item.count}</text>
+              <rect x={28 + i * (barW + 4)} y={Math.max(0, 75 - barH)} width={barW} height={barH} fill="#a855f7" opacity={0.6} rx={2} />
+              <text x={28 + i * (barW + 4) + barW / 2} y={Math.max(8, 75 - barH - 3)} fill="#c084fc" fontSize={8} textAnchor="middle">{item.count}</text>
               <text x={28 + i * (barW + 4) + barW / 2} y={90} fill="#374151" fontSize={6} textAnchor="middle">{label}</text>
             </g>
           );
@@ -420,7 +424,8 @@ export function HistogramChart({ items, unit }: { items: Array<{ min: number; ma
 }
 
 export function LanguageRepoHeatmap({ data }: { data: { languages: string[]; repositories: string[]; cells: Array<{ language: string; repository: string; bytes: number }> } }) {
-  const maxBytes = Math.max(1, ...data.cells.map((c) => c.bytes));
+  if (!data?.cells || !data?.languages || !data?.repositories) return null;
+  const maxBytes = Math.max(1, ...data.cells.map((c) => Math.max(0, c.bytes ?? 0)));
   const cellSize = 16;
   const labelW = 70, headerH = 50;
   return (
@@ -438,7 +443,7 @@ export function LanguageRepoHeatmap({ data }: { data: { languages: string[]; rep
           const ri = data.repositories.indexOf(cell.repository);
           const li = data.languages.indexOf(cell.language);
           if (ri < 0 || li < 0) return null;
-          const opacity = cell.bytes === 0 ? 0.03 : 0.2 + (cell.bytes / maxBytes) * 0.8;
+          const opacity = cell.bytes === 0 ? 0.03 : 0.2 + ((cell.bytes ?? 0) / maxBytes) * 0.8;
           return <rect key={i} x={labelW + ri * (cellSize + 2)} y={headerH + li * (cellSize + 2)} width={cellSize} height={cellSize} rx={2} fill={`rgba(6,182,212,${opacity})`} />;
         })}
       </svg>
@@ -447,11 +452,14 @@ export function LanguageRepoHeatmap({ data }: { data: { languages: string[]; rep
 }
 
 export function SecuritySeverities({ data }: { data: { codeScanning: Record<string, number>; dependabot: Record<string, number> } }) {
+  if (!data) return null;
   const severityColors: Record<string, string> = { critical: "#ef4444", high: "#f97316", medium: "#facc15", low: "#06b6d4", unknown: "#64748b" };
-  const allSeverities = [...new Set([...Object.keys(data.codeScanning), ...Object.keys(data.dependabot)])];
+  const codeScanning = data.codeScanning ?? {};
+  const dependabot = data.dependabot ?? {};
+  const allSeverities = [...new Set([...Object.keys(codeScanning), ...Object.keys(dependabot)])];
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {[["Code Scanning", data.codeScanning], ["Dependabot", data.dependabot]].map(([label, counts]) => {
+      {[["Code Scanning", codeScanning], ["Dependabot", dependabot]].map(([label, counts]) => {
         const obj = counts as Record<string, number>;
         const total = Object.values(obj).reduce((s, v) => s + v, 0);
         return (
@@ -475,10 +483,12 @@ export function SecuritySeverities({ data }: { data: { codeScanning: Record<stri
   );
 }
 
-export function StarHistory({ data }: { data: Array<{ repository: string; points: Array<{ at: string; cumulative: number }> }> }) {
-  if (!data.length) return null;
-  const maxStars = Math.max(1, ...data.flatMap((d) => d.points.map((p) => p.cumulative)));
-  const allPoints = data.flatMap((d) => d.points);
+export function StarHistory({ data }: { data: Array<{ repository: string; points?: Array<{ at: string; cumulative: number }> }> }) {
+  if (!Array.isArray(data) || !data.length) return null;
+  const validData = data.filter((d) => Array.isArray(d?.points) && d.points.length > 0);
+  if (!validData.length) return null;
+  const maxStars = Math.max(1, ...validData.flatMap((d) => (d.points ?? []).map((p) => p.cumulative)));
+  const allPoints = validData.flatMap((d) => d.points ?? []);
   if (!allPoints.length) return null;
   const timestamps = allPoints.map((p) => new Date(p.at).getTime());
   const minTime = Math.min(...timestamps);
@@ -491,15 +501,15 @@ export function StarHistory({ data }: { data: Array<{ repository: string; points
       <svg width={w + pad * 2} height={h + 20}>
         <line x1={pad} y1={h - pad} x2={w + pad} y2={h - pad} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
         <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(0,0,0,0.15)" strokeWidth={0.5} />
-        {data.slice(0, 5).map((repo, ri) => {
-          const points = repo.points.map((p) => {
+        {validData.slice(0, 5).map((repo, ri) => {
+          const points = (repo.points ?? []).map((p) => {
             const x = pad + ((new Date(p.at).getTime() - minTime) / range) * w;
             const y = (h - pad) - (p.cumulative / maxStars) * (h - pad * 2);
             return `${x},${y}`;
           }).join(" ");
           return <polyline key={ri} points={points} fill="none" stroke={colors[ri % colors.length]} strokeWidth={1.5} opacity={0.7} />;
         })}
-        <text x={w / 2 + pad} y={h + 12} fill="#374151" fontSize={7} textAnchor="middle">{data.slice(0, 5).map((d, i) => `${d.repository.split("/")[1]?.slice(0, 8)} (${colors[i % colors.length]})`).join(" | ")}</text>
+        <text x={w / 2 + pad} y={h + 12} fill="#374151" fontSize={7} textAnchor="middle">{validData.slice(0, 5).map((d, i) => `${d.repository.split("/")[1]?.slice(0, 8)} (${colors[i % colors.length]})`).join(" | ")}</text>
       </svg>
     </div>
   );

@@ -9,7 +9,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "smoke": "npx tsx --tsconfig tsconfig.json scripts/smoke-test.mts",
+    "smoke:quick": "npx tsx --tsconfig tsconfig.json scripts/smoke-test.mts quick",
+    "smoke:standard": "npx tsx --tsconfig tsconfig.json scripts/smoke-test.mts standard"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

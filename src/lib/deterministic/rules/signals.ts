@@ -176,18 +176,11 @@ export const rule3_9RepoCreationClustering: SignalRule = (data) => {
   );
 };
 
-export const rule3_10MutualStarCluster: SignalRule = (data) => {
-  const starredOwners = new Map(data.userStarred.map((item) => [item.repo.owner.login.toLowerCase(), item.starred_at]));
-  const mutual = Object.entries(data.stargazers).flatMap(([repository, events]) => events.flatMap((event) => {
-    const userStarredAt = starredOwners.get(event.user.login.toLowerCase());
-    if (!userStarredAt) return [];
-    return [{ repository, login: event.user.login, timingDays: round(daysBetween(event.starred_at, userStarredAt), 2) }];
-  })).filter((item) => item.timingDays <= 7);
-  const unique = new Set(mutual.map((item) => item.login)).size;
-  // Avoid flat() just for a count: use reduce over array lengths.
-  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
-  return signal(sampled("3.10", "Mutual star cluster", { uniqueAccounts: unique, matches: mutual }, `${unique} sampled accounts form close-in-time mutual star relationships.`, "stargazers + user starred repositories", totalStargazers, "Top three repositories and first 100 stargazers only; flag-only and never a verdict."), unique >= 3);
-};
+export const rule3_10MutualStarCluster: SignalRule = () =>
+  signal(
+    unavailable("3.10", "Mutual star cluster", "Timestamped stargazer events are restricted by GitHub API without fine-grained repository permissions.", "stargazers API", "cheap"),
+    false,
+  );
 
 export const rule3_11FollowerContentCorrelation: SignalRule = (data) => {
   if (data.snapshots.length < 2) return signal(unavailable("3.11", "Follower growth vs content correlation", "Historical follower counts do not exist in GitHub's API; at least two in-memory analysis snapshots are required.", "Internal analysis snapshots", "cheap"), false);
@@ -262,20 +255,11 @@ export const rule3_18LicenseReadmeCompleteness: SignalRule = (data) => {
   return sampledSignal("3.18", "License and README completeness", { average: round(average), repositories: repos }, `Average deterministic completeness is ${round(average)} / 100.`, "contents API", repos.length >= 3 && average < 40, repos.length, "Top 10 repositories only.");
 };
 
-export const rule3_19CoordinatedStarBursts: SignalRule = (data) => {
-  const buckets = new Map<string, Set<string>>();
-  for (const [repository, events] of Object.entries(data.stargazers)) {
-    for (const event of events) {
-      const hour = event.starred_at.slice(0, 13);
-      const set = buckets.get(hour) ?? new Set<string>();
-      set.add(repository);
-      buckets.set(hour, set);
-    }
-  }
-  const bursts = [...buckets.entries()].filter(([, repos]) => repos.size >= 3).map(([hour, repos]) => ({ hour, repositories: [...repos] }));
-  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
-  return signal(sampled("3.19", "Coordinated star bursts", bursts, `${bursts.length} sampled hour buckets contain stars across at least three repositories.`, "stargazers with star timestamps", totalStargazers, "Top three repos, first 100 stargazers; flag-only and never a verdict."), bursts.length > 0);
-};
+export const rule3_19CoordinatedStarBursts: SignalRule = () =>
+  signal(
+    unavailable("3.19", "Coordinated star bursts", "Timestamped stargazer events are restricted by GitHub API without fine-grained repository permissions.", "stargazers API", "cheap"),
+    false,
+  );
 
 // for...of over the Set directly avoids spreading Set to array for filtering.
 export const rule3_20MutualFollowRatio: SignalRule = (data) => {

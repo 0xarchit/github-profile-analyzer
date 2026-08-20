@@ -5,14 +5,12 @@ import {
   fetchBranches,
   fetchCheckRuns,
   fetchCodeFrequency,
-  fetchCodeScanningAlerts,
   fetchCommit,
   fetchCommitActivity,
   fetchCommitPulls,
   fetchCommits,
   fetchContentPath,
   fetchContributors,
-  fetchDependabotAlerts,
   fetchFollowersPage,
   fetchFollowingPage,
   fetchForks,
@@ -28,7 +26,6 @@ import {
   fetchReleases,
   fetchRepo,
   fetchSbom,
-  fetchStargazers,
   fetchSubscriptions,
   fetchUser,
   fetchUserReposPage,
@@ -239,10 +236,7 @@ async function fetchQuality(client: GitHubClient, repo: GitHubRepo, unavailable:
     null as null | { content: string; encoding: string; size: number },
     async () => (await fetchReadme(client, owner, repo.name)).data,
   );
-  const [testsPresent, ciPresent] = await Promise.all([
-    pathExists(client, owner, repo.name, ["test", "tests", "__tests__", "spec"], unavailable),
-    pathExists(client, owner, repo.name, [".github/workflows"], unavailable),
-  ]);
+  const ciPresent = await pathExists(client, owner, repo.name, [".github/workflows"], unavailable);
   let readmeText = "";
   if (readme?.content && readme.encoding === "base64") {
     readmeText = decodeBase64(readme.content);
@@ -251,47 +245,33 @@ async function fetchQuality(client: GitHubClient, repo: GitHubRepo, unavailable:
     readmeBytes: readme?.size ?? 0,
     readmeText,
     licensePresent: Boolean(repo.license),
-    testsPresent,
+    testsPresent: false,
     ciPresent,
   };
 }
 
 async function fetchSecurity(client: GitHubClient, repo: GitHubRepo, unavailable: Record<string, string>): Promise<SecuritySummary> {
   const owner = repo.owner.login;
-  const sbom = await safe(
-    unavailable,
-    `${repo.full_name}-sbom`,
-    null as null | { sbom?: { packages?: SecuritySummary["sbomPackages"] } },
-    async () => (await fetchSbom(client, owner, repo.name)).data,
-  );
-  let codeScanning: SecuritySummary["codeScanning"] = null;
-  let dependabot: SecuritySummary["dependabot"] = null;
-  let codeScanningEnabled = false;
-  let dependabotEnabled = false;
-  try {
-    codeScanning = (await fetchCodeScanningAlerts(client, owner, repo.name)).data;
-    codeScanningEnabled = true;
-  } catch (error) {
-    if (!isUnavailableStatus(error, [403, 404])) recordFailure(unavailable, `${repo.full_name}-code-scanning`, error);
-  }
-  try {
-    dependabot = (await fetchDependabotAlerts(client, owner, repo.name)).data;
-    dependabotEnabled = true;
-  } catch (error) {
-    if (!isUnavailableStatus(error, [403, 404])) recordFailure(unavailable, `${repo.full_name}-dependabot`, error);
-  }
-  const checks = await safe(
-    unavailable,
-    `${repo.full_name}-checks`,
-    [] as SecuritySummary["checks"],
-    async () => (await fetchCheckRuns(client, owner, repo.name, repo.default_branch)).data.check_runs,
-  );
+  const [sbom, checks] = await Promise.all([
+    safe(
+      unavailable,
+      `${repo.full_name}-sbom`,
+      null as null | { sbom?: { packages?: SecuritySummary["sbomPackages"] } },
+      async () => (await fetchSbom(client, owner, repo.name)).data,
+    ),
+    safe(
+      unavailable,
+      `${repo.full_name}-checks`,
+      [] as SecuritySummary["checks"],
+      async () => (await fetchCheckRuns(client, owner, repo.name, repo.default_branch)).data.check_runs,
+    ),
+  ]);
   return {
     sbomPackages: sbom?.sbom?.packages ?? [],
-    codeScanning,
-    dependabot,
-    codeScanningEnabled,
-    dependabotEnabled,
+    codeScanning: null,
+    dependabot: null,
+    codeScanningEnabled: false,
+    dependabotEnabled: false,
     checks,
   };
 }
@@ -572,29 +552,10 @@ export async function collectEngineData(
   };
 
   const stargazers: EngineData["stargazers"] = {};
-  const starRepos = ranked.filter((repo) => !repo.fork && repo.stargazers_count > 0).slice(0, profile.starRepositoryLimit);
-  if (allowExpensive) {
-    await mapConcurrent(starRepos, 4, async (repo) => {
-      stargazers[repo.full_name] = await safe(
-        unavailable,
-        `${repo.full_name}-stargazers`,
-        [],
-        async () => (await fetchStargazers(client, repo.owner.login, repo.name)).data,
-      );
-    });
-  } else {
-    unavailable["stargazers-phase-c"] = profile.starRepositoryLimit === 0
-      ? `${profile.label} mode skips stargazer history.`
-      : "Skipped because live core quota was below 200.";
-  }
-  sampled["stargazers"] = {
-    size: Object.values(stargazers).reduce((sum, items) => sum + items.length, 0),
-    note: `Star history uses at most the first 100 stargazers across top ${profile.starRepositoryLimit} repositories.`,
-  };
 
   const commitDetails: Record<string, GitHubCommit> = {};
   if (allowExpensive) {
-    const detailCandidates = starRepos
+    const detailCandidates = topRepos
       .flatMap((repo) => (commits[repo.full_name] ?? []).map((commit) => ({ repo, commit })))
       .slice(0, profile.commitDetailLimit);
     for (const { repo, commit } of detailCandidates) {

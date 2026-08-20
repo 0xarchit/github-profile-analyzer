@@ -76,9 +76,15 @@ export const rule2_6CodeQualityProxy: ScoreRule = (data) => {
   const values = Object.values(data.qualities).map((quality) => {
     const image = /!\[|<img/i.test(quality.readmeText);
     const install = /(^|\n)#{1,4}\s*(install|setup|usage)\b/i.test(quality.readmeText);
-    return (Number(quality.licensePresent) * 30 + Number(quality.readmeBytes > 300) * 25 + Number(quality.testsPresent) * 25 + Number(quality.ciPresent) * 15 + Number(image) * 3 + Number(install) * 2);
+    return (
+      Number(quality.licensePresent) * 30 +
+      Number(quality.readmeBytes > 300) * 30 +
+      Number(quality.ciPresent) * 30 +
+      Number(image) * 5 +
+      Number(install) * 5
+    );
   });
-  return score("2.6", "Code quality proxy", mean(values), "Deterministic repository hygiene flags: license, README size, tests, CI, images, and install instructions.", "contents API + repository metadata", { sampledRepositories: values.length });
+  return score("2.6", "Code quality proxy", mean(values), "Deterministic repository hygiene flags: license, README size, CI workflows, images, and install instructions.", "contents API + repository metadata", { sampledRepositories: values.length });
 };
 
 // Module-level Set for O(1) .has() lookup instead of O(k) .includes() per signal.
@@ -156,19 +162,13 @@ export const rule2_11CommunityScore: ScoreRule = (data) => {
   return score("2.11", "Community score", weightedAverage([[latency, 0.3], [mergeRate, 0.25], [review, 0.25], [discussions, 0.2]]), "Maintainer response, merge rate, reviews, and discussions.", "GraphQL repository issue batch + Search API", { responseSamples: response.length, medianResponseHours: median(response), discussions: Object.values(data.issues).reduce((sum, item) => sum + item.discussions, 0) });
 };
 
-// Module-level const avoids reconstructing the weights object on every alert iteration.
-const SEVERITY_WEIGHTS: Record<string, number> = { critical: 35, high: 24, medium: 12, low: 4 };
-
 export const rule2_12SecurityHygieneScore: ScoreRule = (data) => {
   const values = Object.values(data.security).map((security) => {
-    const scan = security.codeScanning ?? [];
-    const dependabot = security.dependabot ?? [];
-    const severity = [...scan.map((alert) => alert.rule?.security_severity_level), ...dependabot.map((alert) => alert.security_advisory?.severity)]
-      .reduce((sum, value) => sum + (SEVERITY_WEIGHTS[value ?? "low"] ?? 1), 0);
-    const enabled = Number(security.codeScanningEnabled) * 25 + Number(security.dependabotEnabled) * 20 + Number(security.sbomPackages.length > 0) * 20 + Number(security.checks.length > 0) * 10;
-    return clamp(enabled - severity);
+    const sbomScore = Number(security.sbomPackages.length > 0) * 50;
+    const checksScore = Number(security.checks.length > 0) * 50;
+    return clamp(sbomScore + checksScore);
   });
-  return score("2.12", "Security hygiene score", mean(values), "Security feature presence is scored separately from alert severity; 404 means feature absent, not zero alerts.", "SBOM + code scanning + Dependabot + check-runs", { sampledRepositories: values.length });
+  return score("2.12", "Security hygiene score", mean(values), "Public repository security posture: verified dependency graph SBOM and automated CI check runs.", "SBOM + GitHub check runs", { sampledRepositories: values.length });
 };
 
 export const rule2_13GivingBackScore: ScoreRule = (data) => {

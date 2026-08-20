@@ -107,8 +107,8 @@ export const rule4_3CodeFrequency: ChartRule = (data) => {
   const weeks = new Map<number, { additions: number; deletions: number }>();
   for (const items of Object.values(data.codeFrequency)) for (const [week, additions, deletions] of items) {
     const current = weeks.get(week) ?? { additions: 0, deletions: 0 };
-    current.additions += additions;
-    current.deletions += deletions;
+    current.additions += Math.max(0, additions);
+    current.deletions += Math.abs(deletions);
     weeks.set(week, current);
   }
   return sampledChart("4.3", "Additions vs deletions", "diverging-bar", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, value]) => ({ week: new Date(week * 1_000).toISOString(), ...value })), "Weekly additions and deletions across sampled repositories.", "stats/code_frequency", Object.keys(data.codeFrequency).length, "Repositories with 10,000+ commits can return 422 and are omitted as unavailable.");
@@ -231,34 +231,46 @@ export const rule4_14LeaderboardPercentiles: ChartRule = () =>
   chart(unavailable("4.14", "Leaderboard percentile bars", "Leaderboard persistence and population distributions are explicitly out of scope for this token-pool engine.", "Internal leaderboard distribution", "cheap"), "bar");
 
 export const rule4_15CumulativeStars: ChartRule = (data) => {
-  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
-  if (totalStargazers === 0) {
+  const ranked = data.repos
+    .filter((repo) => !repo.fork && repo.stargazers_count > 0)
+    .sort((a, b) => b.stargazers_count - a.stargazers_count)
+    .slice(0, 10);
+  if (!ranked.length) {
     return chart(
-      unavailable("4.15", "Cumulative star history", "No star history timestamps found or stargazer sampling was skipped.", "stargazers star+json", "expensive"),
-      "line",
-    );
-  }
-  const series = Object.entries(data.stargazers).map(([repository, events]) => ({
-    repository,
-    points: [...events].sort((a, b) => a.starred_at.localeCompare(b.starred_at)).map((event, index) => ({ at: event.starred_at, cumulative: index + 1 })),
-  }));
-  return sampledChart("4.15", "Cumulative star history", "line", series, "Sampled cumulative star timestamps for top repositories.", "stargazers star+json", totalStargazers, "Top three repositories and first 100 stargazers each.", "expensive");
-};
-
-export const rule4_16StarVelocity: ChartRule = (data) => {
-  const allStars = Object.values(data.stargazers).flat();
-  if (!allStars.length) {
-    return chart(
-      unavailable("4.16", "Star velocity", "No star event history available across sampled repositories.", "stargazers star+json", "expensive"),
+      unavailable("4.15", "Star distribution by repository", "No starred non-fork repositories found.", "GET /users/{u}/repos", "cheap"),
       "bar",
     );
   }
-  const months = new Map<string, number>();
-  for (const event of allStars) {
-    const month = event.starred_at.slice(0, 7);
-    months.set(month, (months.get(month) ?? 0) + 1);
+  const series = ranked.map((repo) => ({
+    repository: repo.name,
+    stars: repo.stargazers_count,
+  }));
+  return chart(
+    ok("4.15", "Star distribution by repository", series, "Stars earned across top original repositories.", "GET /users/{u}/repos"),
+    "bar",
+  );
+};
+
+export const rule4_16StarVelocity: ChartRule = (data) => {
+  const active = data.repos
+    .filter((repo) => !repo.fork && (repo.stargazers_count > 0 || repo.forks_count > 0))
+    .sort((a, b) => (b.stargazers_count + b.forks_count) - (a.stargazers_count + a.forks_count))
+    .slice(0, 10);
+  if (!active.length) {
+    return chart(
+      unavailable("4.16", "Stars vs forks by repository", "No stars or forks recorded across original repositories.", "GET /users/{u}/repos", "cheap"),
+      "bar",
+    );
   }
-  return sampledChart("4.16", "Star velocity", "bar", [...months.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, stars]) => ({ month, stars })), "Sampled stars per month.", "stargazers star+json", allStars.length, "Top three repositories and first 100 stargazers each.", "expensive");
+  const comparison = active.map((repo) => ({
+    repository: repo.name,
+    stars: repo.stargazers_count,
+    forks: repo.forks_count,
+  }));
+  return chart(
+    ok("4.16", "Stars vs forks by repository", comparison, "Comparison of stars and forks earned per original repository.", "GET /users/{u}/repos"),
+    "bar",
+  );
 };
 
 export const rule4_17PrMergeHistogram: ChartRule = (data) => {
@@ -293,9 +305,16 @@ export const rule4_23FollowerGrowth: ChartRule = (data) => data.snapshots.length
   : chart(ok("4.23", "Follower growth line", data.snapshots.map((snapshot) => ({ at: snapshot.at, followers: snapshot.followers, stars: snapshot.stars })), "Follower and star snapshots captured by this running process.", "Internal snapshots"), "line");
 
 export const rule4_24ReleaseStarOverlay: ChartRule = (data) => {
-  const releases = Object.entries(data.releases).flatMap(([repository, items]) => items.flatMap((release) => release.published_at ? [{ repository, at: release.published_at, tag: release.tag_name }] : []));
-  const stars = Object.entries(data.stargazers).flatMap(([repository, items]) => items.map((event) => ({ repository, at: event.starred_at })));
-  return sampledChart("4.24", "Release timeline and star overlay", "timeline", { releases, stars }, "Release markers over sampled star events.", "releases + stargazers", releases.length + stars.length, "Release data is top-10; star data is top-three and capped.");
+  const releases = Object.entries(data.releases).flatMap(([repository, items]) =>
+    items.flatMap((release) => (release.published_at ? [{ repository, at: release.published_at, tag: release.tag_name }] : [])),
+  );
+  if (!releases.length) {
+    return chart(
+      unavailable("4.24", "Release timeline", "No public releases found across sampled repositories.", "releases endpoint", "cheap"),
+      "timeline",
+    );
+  }
+  return sampledChart("4.24", "Release timeline", "timeline", releases, "Release milestone markers across top repositories.", "GET /repos/{o}/{r}/releases", releases.length, "Top 10 repositories.");
 };
 
 export const rule4_25TrafficViews: ChartRule = () =>
@@ -319,21 +338,11 @@ export const rule4_27DependencyEcosystems: ChartRule = (data) => {
   return sampledChart("4.27", "Dependency ecosystems", "donut", Object.entries(counts).map(([ecosystem, value]) => ({ ecosystem, value })), "SPDX SBOM packages grouped by package URL ecosystem.", "dependency-graph/sbom", Object.keys(data.security).length, "Top repositories only; SBOM packages are a current snapshot.");
 };
 
-export const rule4_28SecuritySeverities: ChartRule = (data) => {
-  const codeScanning: Record<string, number> = {};
-  const dependabot: Record<string, number> = {};
-  for (const item of Object.values(data.security)) {
-    for (const alert of item.codeScanning ?? []) {
-      const severity = alert.rule?.security_severity_level ?? "unknown";
-      codeScanning[severity] = (codeScanning[severity] ?? 0) + 1;
-    }
-    for (const alert of item.dependabot ?? []) {
-      const severity = alert.security_advisory?.severity ?? "unknown";
-      dependabot[severity] = (dependabot[severity] ?? 0) + 1;
-    }
-  }
-  return sampledChart("4.28", "Security alert severities", "donut", { codeScanning, dependabot }, "Current alert severities; feature-absent repositories are reported separately from zero alerts.", "code-scanning + Dependabot", Object.keys(data.security).length, "Top repositories only.");
-};
+export const rule4_28SecuritySeverities: ChartRule = () =>
+  chart(
+    oauthOnly("4.28", "Security alert severities", "GET /repos/{o}/{r}/code-scanning/alerts + dependabot (Requires fine-grained repository security manager permissions)"),
+    "donut",
+  );
 
 // Single filter+collect pass instead of .filter().map().sort() triple pass.
 export const rule4_29LorenzCurve: ChartRule = (data) => {

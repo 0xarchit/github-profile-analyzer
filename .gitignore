@@ -50,3 +50,6 @@ fixes.md
 
 DETERMINISTIC_RULES.md
 prompt.md
+
+# Smoke test logs
+logs/
