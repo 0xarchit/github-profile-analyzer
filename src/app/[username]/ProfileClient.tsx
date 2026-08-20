@@ -56,9 +56,7 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         setIsRefreshing(force);
         setError(null);
 
-        const streamUrl = engineMode === "deterministic"
-          ? `/api/analyze/deterministic/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`
-          : `/api/analyze/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`;
+        const streamUrl = `/api/analyze/stream?username=${encodeURIComponent(username)}${force ? "&force=true" : ""}`;
         const eventSource = new EventSource(streamUrl);
 
         eventSource.addEventListener("status", (e) => {
@@ -99,7 +97,7 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
           } catch {}
         });
 
-        eventSource.addEventListener("analysis-error", (e) => {
+        const handleErrorEvent = (e: Event) => {
           try {
             const payload = JSON.parse((e as MessageEvent).data || "{}");
             if (payload.error === "Star required") {
@@ -112,7 +110,10 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
           } finally {
             eventSource.close();
           }
-        });
+        };
+
+        eventSource.addEventListener("analysis-error", handleErrorEvent);
+        eventSource.addEventListener("error", handleErrorEvent);
 
         eventSource.onerror = () => {
           setError("NETWORK_FAILURE");
