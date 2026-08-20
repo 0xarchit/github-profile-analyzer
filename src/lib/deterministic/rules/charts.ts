@@ -79,14 +79,16 @@ export const rule4_1ContributionCalendar: ChartRule = (data) => {
   }
   let currentWeek = 0;
   const days = data.graphql.calendar.map((day, index) => {
-    if (index > 0 && day.weekday === 0) {
+    if (day.week !== undefined) {
+      currentWeek = day.week;
+    } else if (index > 0 && day.weekday === 0) {
       currentWeek += 1;
     }
     return {
       date: day.date,
       count: day.contributionCount,
       weekday: day.weekday,
-      week: currentWeek,
+      week: day.week ?? currentWeek,
     };
   });
   return chart(

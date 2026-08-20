@@ -127,6 +127,7 @@ export interface CalendarDay {
   date: string;
   contributionCount: number;
   weekday: number;
+  week?: number;
   color?: string;
 }
 

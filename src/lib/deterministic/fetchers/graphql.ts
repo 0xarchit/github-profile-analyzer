@@ -86,6 +86,13 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
   const response = await client.graphql<MainResponse>(MAIN_QUERY, { login: username, from, to }, "profile GraphQL summary");
   if (!response.user) throw new UserNotFoundError(`GitHub user @${username} was not found.`);
   const collection = response.user.contributionsCollection;
+  const calendarDays: GraphQLSummary["calendar"] = collection.contributionCalendar.weeks.flatMap(
+    (week, weekIndex) =>
+      week.contributionDays.map((day) => ({
+        ...day,
+        week: weekIndex,
+      })),
+  );
   return {
     totalContributions: collection.contributionCalendar.totalContributions,
     restrictedContributionsCount: collection.restrictedContributionsCount,
@@ -94,7 +101,7 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
     totalIssueContributions: collection.totalIssueContributions,
     totalDiscussionCommentContributions: 0,
     contributionYears: collection.contributionYears,
-    calendar: collection.contributionCalendar.weeks.flatMap((week) => week.contributionDays),
+    calendar: calendarDays,
     contributionsByRepo: collection.commitContributionsByRepository.map((item) => ({ repository: item.repository.nameWithOwner, count: item.contributions.totalCount })),
     pinnedItems: response.user.pinnedItems.nodes.filter((item): item is NonNullable<typeof item> => Boolean(item)),
     starredRepositoriesCount: response.user.starredRepositories.totalCount,
