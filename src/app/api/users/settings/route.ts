@@ -7,6 +7,7 @@ import {
   upsertUser,
   updateUserSettings,
   getUserScans,
+  getUserDeterministicScans,
 } from "@/lib/db";
 import { deleteCachedData } from "@/lib/redis";
 
@@ -42,18 +43,49 @@ export async function GET() {
       }
     }
 
-    const scans = user ? await getUserScans(user.id) : [];
+    const [scans, deterministicScans] = user
+      ? await Promise.all([getUserScans(user.id), getUserDeterministicScans(user.id)])
+      : [[], []];
+
+    // Combine with deterministic scans first, sorted by created_at desc, capped strictly at 10
+    const unifiedHistory = [
+      ...deterministicScans.map((d) => ({
+        id: d.id,
+        user_id: d.user_id,
+        username: d.username,
+        data: {
+          score: d.overall_score,
+          developer_type: d.archetype || "Developer",
+          letter_grade: d.letter_grade,
+          mode: d.mode,
+        },
+        created_at: d.created_at,
+        type: "deterministic" as const,
+      })),
+      ...scans.map((s) => ({
+        ...s,
+        type: "legacy" as const,
+      })),
+    ]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10);
+
+    const defaultPrimaryId = user?.settings?.primary_scan_id || unifiedHistory[0]?.id || null;
 
     return NextResponse.json({
       settings: user
-        ? user.settings
+        ? {
+            ...user.settings,
+            primary_scan_id: defaultPrimaryId,
+          }
         : {
             profile_locked: true,
             keep_history: true,
             public_scans: false,
-            primary_scan_id: null,
+            primary_scan_id: defaultPrimaryId,
           },
-      history: scans,
+      history: unifiedHistory,
+      deterministicHistory: deterministicScans.slice(0, 10),
     });
   } catch (err: unknown) {
     const error =

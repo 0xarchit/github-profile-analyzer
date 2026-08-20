@@ -7,6 +7,7 @@ import {
   getLatestSelfScan,
   getScanById,
   getLatestDeterministicScan,
+  getDeterministicScanById,
 } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
@@ -30,20 +31,35 @@ export async function generateMetadata({
       const isOwner =
         session?.username?.toLowerCase() === username.toLowerCase();
 
-      let scan = null;
+      // Check deterministic scans first
+      let deterministicScan = null;
       if (user.settings?.primary_scan_id) {
-        scan = await getScanById(user.settings.primary_scan_id);
+        deterministicScan = await getDeterministicScanById(user.settings.primary_scan_id);
       }
-      if (!scan && (isOwner || user.settings?.public_scans)) {
-        scan = await getLatestSelfScan(user.id, username);
-      }
-      if (!scan && !isOwner && !user.settings?.public_scans) {
-        notFound();
+      if (!deterministicScan && (isOwner || user.settings?.public_scans)) {
+        deterministicScan = await getLatestDeterministicScan(user.id, username);
       }
 
-      if (scan) {
-        score = scan.data.score;
-        devType = scan.data.developer_type || "Developer";
+      if (deterministicScan) {
+        score = deterministicScan.overall_score;
+        devType = deterministicScan.archetype || "Developer";
+      } else {
+        // Fallback to legacy scan if no deterministic scan found
+        let scan = null;
+        if (user.settings?.primary_scan_id) {
+          scan = await getScanById(user.settings.primary_scan_id);
+        }
+        if (!scan && (isOwner || user.settings?.public_scans)) {
+          scan = await getLatestSelfScan(user.id, username);
+        }
+        if (!scan && !isOwner && !user.settings?.public_scans) {
+          notFound();
+        }
+
+        if (scan) {
+          score = scan.data.score;
+          devType = scan.data.developer_type || "Developer";
+        }
       }
     }
   }

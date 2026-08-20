@@ -14,6 +14,7 @@ export default function Home() {
   const [versionOpen, setVersionOpen] = useState<"hover" | "click" | null>(null);
   const [engineMode, setEngineMode] = useState<"deterministic" | "legacy">("deterministic");
   const [deterministicMode, setDeterministicMode] = useState<"quick" | "standard" | "deep">("deep");
+  const [isScanning, setIsScanning] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -267,10 +268,15 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              className="neo-button bg-neo-pink text-sm sm:text-2xl h-12 sm:h-24 px-4 sm:px-12 shadow-neo-lg hover:bg-black hover:text-white group flex items-center justify-center gap-2 sm:gap-3 whitespace-nowrap shrink-0"
+              disabled={isScanning}
+              className={`neo-button text-sm sm:text-2xl h-12 sm:h-24 px-4 sm:px-12 shadow-neo-lg group flex items-center justify-center gap-2 sm:gap-3 whitespace-nowrap shrink-0 transition-all ${
+                isScanning
+                  ? "bg-black text-white cursor-wait opacity-90 translate-x-1 translate-y-1 shadow-none"
+                  : "bg-neo-pink hover:bg-black hover:text-white"
+              }`}
             >
-              <span>Scan</span>
-              <Zap className="w-4 h-4 sm:w-6 sm:h-6 fill-neo-yellow" />
+              <span>{isScanning ? "Scanning..." : "Scan"}</span>
+              <Zap className={`w-4 h-4 sm:w-6 sm:h-6 fill-neo-yellow ${isScanning ? "animate-spin" : ""}`} />
             </button>
           </div>
 
@@ -284,7 +290,10 @@ export default function Home() {
             <div className="flex justify-center items-center gap-6 flex-wrap">
               <button
                 type="button"
-                onClick={() => router.push(`/${user.username}${engineMode === "deterministic" ? `?mode=${deterministicMode}` : "?engine=legacy"}`)}
+                onClick={() => {
+                  setIsScanning(true);
+                  router.push(`/${user.username}${engineMode === "deterministic" ? `?mode=${deterministicMode}` : "?engine=legacy"}`);
+                }}
                 className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink hover:border-neo-pink transition-colors tracking-widest group border-b-2 border-black pb-1"
               >
                 <div className="p-1 border-2 border-black group-hover:bg-neo-pink group-hover:border-neo-pink transition-colors">

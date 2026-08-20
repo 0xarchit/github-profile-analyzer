@@ -244,6 +244,11 @@ export async function updateUserSettings(
       FROM scans
       WHERE id = ${safeSettings.primary_scan_id}
         AND user_id = ${userId}
+      UNION ALL
+      SELECT 1
+      FROM deterministic_scans
+      WHERE id = ${safeSettings.primary_scan_id}
+        AND user_id = ${userId}
       LIMIT 1
     `;
     if (scanRows.length === 0) {
@@ -572,4 +577,25 @@ export async function getDeterministicScanById(
     return null;
   }
 }
+
+/**
+ * Retrieves up to 10 recent deterministic scans for a given user.
+ */
+export async function getUserDeterministicScans(
+  userId: number,
+): Promise<DeterministicScan[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM deterministic_scans
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+    return rows.map((r) => mapDeterministicScanRow(r as Record<string, unknown>));
+  } catch (err) {
+    console.error("[DB] getUserDeterministicScans failed:", err);
+    return [];
+  }
+}
+
 
