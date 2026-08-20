@@ -36,7 +36,7 @@ interface ProfileClientProps {
   engineMode?: "deterministic" | "legacy";
 }
 
-export function ProfileClient({ username, initialData, engineMode = "deterministic" }: ProfileClientProps) {
+export function ProfileClient({ username, initialData, engineMode = "legacy" }: ProfileClientProps) {
   const router = useRouter();
   const [data, setData] = useState<AnalysisResult | null>(initialData || null);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +113,6 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         };
 
         eventSource.addEventListener("analysis-error", handleErrorEvent);
-        eventSource.addEventListener("error", handleErrorEvent);
 
         eventSource.onerror = () => {
           setError("NETWORK_FAILURE");
@@ -125,7 +124,7 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         setIsRefreshing(false);
       }
     },
-    [username, engineMode],
+    [username],
   );
 
   useEffect(() => {
@@ -304,7 +303,8 @@ export function ProfileClient({ username, initialData, engineMode = "determinist
         )}
       </Header>
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden animate-in fade-in slide-in-from-bottom-4">          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden animate-in fade-in slide-in-from-bottom-4">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="bg-black text-white px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase shadow-neo flex items-center gap-1">
             {engineMode === "deterministic" ? "DETERMINISTIC" : "LEGACY AI"}
             <span className="text-[8px] px-1 py-0.5 bg-neo-pink text-white border border-black">BETA</span>

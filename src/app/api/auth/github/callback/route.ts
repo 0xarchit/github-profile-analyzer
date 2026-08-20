@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { upsertUser } from "@/lib/db";
 import { createSession } from "@/lib/auth";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
+import { UsernameSchema } from "@/lib/validation";
 
 export const runtime = "edge";
 
@@ -11,10 +12,12 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export async function GET(request: Request) {
-  const isDev = process.env.NODE_ENV === "development" || process.env.ENV === "dev" || process.env.NEXT_PUBLIC_ENV === "dev";
+  const isDev = process.env.NODE_ENV !== "production";
   const { searchParams } = new URL(request.url);
   const devLogin = searchParams.get("dev_login") === "true";
-  const devUsername = searchParams.get("username") || "local-dev";
+  const rawDevUser = searchParams.get("username") || "local-dev";
+  const parsedUser = UsernameSchema.safeParse(rawDevUser);
+  const devUsername = parsedUser.success ? parsedUser.data : "local-dev";
 
   if (isDev && devLogin) {
     const devGithubId = 99999999;

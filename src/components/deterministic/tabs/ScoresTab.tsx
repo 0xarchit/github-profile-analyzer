@@ -55,7 +55,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
               </div>
               <span className="text-sm font-heading text-gray-700">{g.score}/100</span>
               <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: "#e8e6d8" }}>
-                <div className="h-full rounded-full" style={{ width: `${g.score}%`, background: gradeColor(g.grade) }} />
+                <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, g.score))}%`, background: gradeColor(g.grade) }} />
               </div>
             </div>
           ))}
@@ -74,7 +74,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
             <div key={d.id}>
               <div className="flex justify-between text-[10px] mb-1"><span className="text-gray-600">{d.label}</span><span className="text-black">{d.score.toFixed(1)}</span></div>
               <div className="h-1.5 rounded-full" style={{ background: "#e8e6d8" }}>
-                <div className="h-full rounded-full bg-cyan-700" style={{ width: `${d.score}%` }} />
+                <div className="h-full rounded-full bg-cyan-700" style={{ width: `${Math.min(100, Math.max(0, d.score))}%` }} />
               </div>
             </div>
           ))}

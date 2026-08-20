@@ -323,7 +323,7 @@ export const rule1_34CommunityFeatures: BaselineRule = (data) => {
 
 export const rule1_35GpgRatio: BaselineRule = (data) => {
   const commits = allCommits(data);
-  const verified = commits.filter((commit) => commit.commit.verification.verified).length;
+  const verified = commits.filter((commit) => commit.commit?.verification?.verified === true).length;
   return moderateSample("1.35", "GPG signature ratio", {
     verified,
     sampledCommits: commits.length,
@@ -411,7 +411,22 @@ export const baselineRules: BaselineRule[] = [
 ];
 
 export const runBaselineRules = (data: EngineData) =>
-  Object.fromEntries(baselineRules.map((rule) => {
-    const result = rule(data);
-    return [result.id, result];
-  }));
+  Object.fromEntries(
+    baselineRules.map((rule, idx) => {
+      try {
+        const result = rule(data);
+        return [result.id, result];
+      } catch (err) {
+        const ruleId = `1.${idx + 1}`;
+        return [
+          ruleId,
+          unavailable(
+            ruleId,
+            `Baseline ${ruleId}`,
+            err instanceof Error ? err.message : "Baseline evaluation failed",
+            "derived",
+          ),
+        ];
+      }
+    }),
+  );

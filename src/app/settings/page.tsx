@@ -15,11 +15,42 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/Header";
 
-import { UserSettings, Scan } from "@/lib/db";
+import { UserSettings } from "@/lib/db";
+
+export interface DeterministicHistoryItem {
+  id: string;
+  user_id: number;
+  username: string;
+  data: {
+    score: number;
+    developer_type: string;
+    letter_grade: string | null;
+    mode: string;
+  };
+  created_at: string;
+  type: "deterministic";
+}
+
+export interface LegacyHistoryItem {
+  id: string;
+  user_id: number;
+  username: string;
+  data: {
+    score?: number;
+    developer_type?: string;
+    letter_grade?: string | null;
+    [key: string]: unknown;
+  };
+  created_at: string;
+  type: "legacy";
+}
+
+export type HistoryItem = DeterministicHistoryItem | LegacyHistoryItem;
 
 interface SettingsData {
   settings: UserSettings;
-  history: Scan[];
+  history: HistoryItem[];
+  suggestedPrimaryId?: string | null;
 }
 
 export default function SettingsPage() {
@@ -32,16 +63,23 @@ export default function SettingsPage() {
   const [navigatingScanId, setNavigatingScanId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/users/settings")
+    const controller = new AbortController();
+
+    fetch("/api/users/settings", { signal: controller.signal })
       .then(async (res) => {
         const resData = await res.json();
         if (!res.ok || resData.error) throw new Error(resData.error || `HTTP ${res.status}`);
         setData(resData);
       })
       .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Unable to load identity protocols.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, []);
 
   const updateSetting = async (payload: Partial<UserSettings>) => {
@@ -100,7 +138,21 @@ export default function SettingsPage() {
       </div>
     );
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <main className="min-h-screen bg-neo-bg p-6 md:p-12 max-w-7xl mx-auto space-y-12">
+        <Header />
+        <div className="flex justify-between items-center border-b-8 border-black pb-8">
+          <h1 className="text-4xl md:text-6xl font-heading uppercase tracking-tighter">
+            IDENTITY <span className="text-neo-pink">PROTOCOLS</span>
+          </h1>
+        </div>
+        <div className="neo-card bg-white border-4 border-black p-4 text-[10px] font-black uppercase tracking-wide text-neo-pink">
+          {error || "Unable to load identity protocols."}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-neo-bg p-6 md:p-12 max-w-7xl mx-auto space-y-12">
@@ -250,9 +302,9 @@ export default function SettingsPage() {
                 const effectivePrimary = data.settings.primary_scan_id || data.history[0]?.id;
                 const filtered = data.history
                   .slice(0, 10)
-                  .filter((s: any) => historyFilter === "all" || s.type === historyFilter);
+                  .filter((s: HistoryItem) => historyFilter === "all" || s.type === historyFilter);
 
-                return filtered.map((scan: any) => {
+                return filtered.map((scan: HistoryItem) => {
                   const isPrimary = effectivePrimary === scan.id;
                   const isDet = scan.type === "deterministic";
 

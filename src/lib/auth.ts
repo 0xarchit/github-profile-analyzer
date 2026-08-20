@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify, JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { sendTelegramAlert } from "./telegram-alert";
 
-const RAW_JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "local_dev_default_jwt_secret_key_32bytes_long" : "");
+export const RAW_JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "development" ? "local_dev_default_jwt_secret_key_32bytes_long" : "");
 if (!RAW_JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
@@ -43,28 +43,27 @@ function isValidSession(p: JWTPayload): p is JWTPayload & Session {
 
 /**
  * Creates a signed JWT session and sets it as an HTTP-only cookie (`gitscore_session`).
- * The token is signed with HS256 and expires in 7 days.
+ * Encodes githubId, username, accessToken, and avatarUrl in the payload.
  *
- * @param sessionData The session payload to sign.
+ * @param sessionData - User info to encode into the token
  */
 export async function createSession(sessionData: Session) {
-  const payload: Session = {
-    ...sessionData,
-    githubId: Number(sessionData.githubId),
-  };
-  const token = await new SignJWT({ ...payload })
+  const session = await new SignJWT({ ...sessionData })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
     .sign(JWT_SECRET);
 
-  (await cookies()).set(SESSION_COOKIE, token, {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, session, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 60 * 60 * 24 * 7, // 7 days
   });
+
+  return session;
 }
 
 export const GUEST_COOKIE = "gitscore_guest";
@@ -119,7 +118,7 @@ export async function verifySession(token: string): Promise<Session | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     if (!isValidSession(payload)) {
-      console.warn("[AUTH] Session payload failed validation check:", payload);
+      console.warn("[AUTH] Session payload failed validation check");
       return null;
     }
     const r = payload as Record<string, unknown>;

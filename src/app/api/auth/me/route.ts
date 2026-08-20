@@ -12,11 +12,12 @@ const noStore = {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeGuest = searchParams.get("guest") === "true";
+  const includeRateLimit = searchParams.get("rate_limit") === "true";
 
   const session = await getSession();
   if (session) {
     let rateLimit = null;
-    if (session.accessToken) {
+    if (includeRateLimit && session.accessToken) {
       try {
         const rlRes = await fetch("https://api.github.com/rate_limit", {
           headers: {

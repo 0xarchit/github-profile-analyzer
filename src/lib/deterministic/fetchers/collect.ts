@@ -1,3 +1,30 @@
+interface RepoBatchGqlNode {
+  languages?: { edges?: Array<{ size?: number; node?: { name?: string } }> };
+  releases?: {
+    nodes?: Array<{
+      tagName?: string;
+      publishedAt?: string;
+      isPrerelease?: boolean;
+      releaseAssets?: { nodes?: Array<{ downloadCount?: number }> };
+    }>;
+  };
+  readme?: { byteSize?: number; text?: string };
+  ciWorkflows?: { entries?: Array<{ name?: string }> };
+  defaultBranchRef?: {
+    name?: string;
+    target?: {
+      history?: {
+        nodes?: Array<{
+          oid: string;
+          message?: string;
+          committedDate?: string;
+          author?: { user?: { login?: string } };
+        }>;
+      };
+    };
+  };
+}
+
 import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, SearchSummary, SecuritySummary } from "../types";
 import { GitHubClient, GitHubRequestError, UserNotFoundError } from "./client";
 import {
@@ -49,6 +76,7 @@ interface CollectionMeta {
 
 export interface CollectionOptions {
   profile?: AnalysisModeProfile;
+  authTier?: "USER-OAUTH" | "TOKEN-POOL";
   onProgress?: AnalysisProgressCallback;
   startedAt?: number;
   signal?: AbortSignal;
@@ -131,11 +159,17 @@ async function fetchAllRepos(client: GitHubClient, username: string, unavailable
 async function fetchSearchSummary(client: GitHubClient, username: string, unavailable: Record<string, string>): Promise<SearchSummary> {
   const summary = emptySearch();
   const GQL_SEARCH = `
-    query UserSearchCounts {
-      searchPrs: search(query: "author:${username} type:pr", type: ISSUE, first: 1) { issueCount }
-      searchPrsMerged: search(query: "author:${username} type:pr is:merged", type: ISSUE, first: 1) { issueCount }
-      searchPrsExternal: search(query: "author:${username} type:pr is:merged -user:${username}", type: ISSUE, first: 1) { issueCount }
-      searchIssues: search(query: "author:${username} type:issue", type: ISSUE, first: 25) {
+    query UserSearchCounts(
+      $prsQuery: String!
+      $prsMergedQuery: String!
+      $prsExternalQuery: String!
+      $issuesQuery: String!
+      $issuesClosedQuery: String!
+    ) {
+      searchPrs: search(query: $prsQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsMerged: search(query: $prsMergedQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsExternal: search(query: $prsExternalQuery, type: ISSUE, first: 1) { issueCount }
+      searchIssues: search(query: $issuesQuery, type: ISSUE, first: 25) {
         issueCount
         nodes {
           ... on Issue {
@@ -145,7 +179,7 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
           }
         }
       }
-      searchIssuesClosed: search(query: "author:${username} type:issue is:closed", type: ISSUE, first: 1) { issueCount }
+      searchIssuesClosed: search(query: $issuesClosedQuery, type: ISSUE, first: 1) { issueCount }
     }
   `;
   try {
@@ -155,7 +189,17 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
       searchPrsExternal: { issueCount: number };
       searchIssues: { issueCount: number; nodes: Array<{ number: number; createdAt: string; repository: { nameWithOwner: string } }> };
       searchIssuesClosed: { issueCount: number };
-    }>(GQL_SEARCH, {}, "user-search-batch");
+    }>(
+      GQL_SEARCH,
+      {
+        prsQuery: `author:${username} type:pr`,
+        prsMergedQuery: `author:${username} type:pr is:merged`,
+        prsExternalQuery: `author:${username} type:pr is:merged -user:${username}`,
+        issuesQuery: `author:${username} type:issue`,
+        issuesClosedQuery: `author:${username} type:issue is:closed`,
+      },
+      "user-search-batch",
+    );
     summary.prsOpened = data.searchPrs?.issueCount ?? 0;
     summary.prsMerged = data.searchPrsMerged?.issueCount ?? 0;
     summary.prsMergedExternal = data.searchPrsExternal?.issueCount ?? 0;
@@ -235,7 +279,7 @@ export async function collectEngineData(
   const minRequiredGraphql = profile.budget.graphql;
 
   if (coreRemaining < minRequiredCore || graphqlRemaining < minRequiredGraphql) {
-    const isUserToken = client["tokenFingerprint"]?.startsWith("oauth:");
+    const isUserToken = options.authTier === "USER-OAUTH";
     const tokenSource = isUserToken ? "Your linked GitHub account token" : "The server token pool";
     throw new Error(
       `RATE_LIMIT_DEPLETED: ${tokenSource} has only ${coreRemaining} REST / ${graphqlRemaining} GraphQL calls remaining. ${profile.label} mode requires at least ${minRequiredCore} REST / ${minRequiredGraphql} GraphQL quota. Please try again later or select a lighter mode.`,
@@ -356,7 +400,7 @@ export async function collectEngineData(
       `;
 
       try {
-        const batchData = await client.graphql<Record<string, any>>(query, {}, `repos-batch-${offset}`);
+        const batchData = await client.graphql<Record<string, RepoBatchGqlNode | undefined>>(query, {}, `repos-batch-${offset}`);
         batch.forEach((repo, i) => {
           const key = repo.full_name;
           const d = batchData[`repo_${offset + i}`];
@@ -370,22 +414,21 @@ export async function collectEngineData(
           languages[key] = langMap;
 
           // Releases mapping
-          releases[key] = (d.releases?.nodes ?? []).map((r: any) => ({
+          releases[key] = (d.releases?.nodes ?? []).map((r) => ({
             name: r.tagName ?? "",
             published_at: r.publishedAt ?? "",
             tag_name: r.tagName ?? "",
             prerelease: Boolean(r.isPrerelease),
-            assets: (r.releaseAssets?.nodes ?? []).map((a: any) => ({
+            assets: (r.releaseAssets?.nodes ?? []).map((a) => ({
               download_count: a.downloadCount ?? 0,
             })),
           }));
 
-          // Branches mapping
-          const branchCount = d.branches?.totalCount ?? 1;
-          branches[key] = Array.from({ length: Math.min(10, branchCount) }, (_, bi) => ({
-            name: bi === 0 ? repo.default_branch : `branch-${bi}`,
+          // Branches mapping: map authentic default branch without fabricating dummy branches
+          branches[key] = [{
+            name: repo.default_branch || "main",
             protected: false,
-          }));
+          }];
 
           // Quality mapping
           qualities[key] = {
@@ -398,7 +441,7 @@ export async function collectEngineData(
 
           // Commits mapping
           const commitNodes = d.defaultBranchRef?.target?.history?.nodes ?? [];
-          commits[key] = commitNodes.map((cn: any) => ({
+          commits[key] = commitNodes.map((cn) => ({
             sha: cn.oid,
             html_url: `${repo.html_url}/commit/${cn.oid}`,
             commit: {

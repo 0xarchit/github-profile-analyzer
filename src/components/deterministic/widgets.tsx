@@ -35,7 +35,12 @@ export function GradeRow({ grade }: { grade: InterpretationGrade }) {
 export function SignalRow({ signal, expanded, onToggle, flagged }: { signal: SignalResult; expanded: boolean; onToggle: () => void; flagged: boolean }) {
   return (
     <div className="rounded-lg overflow-hidden" style={{ background: flagged ? "#fff1f2" : "white", border: flagged ? "2px solid #e11d48" : "2px solid black" }}>
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-3 py-2 text-left">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-3 py-2 text-left"
+      >
         {flagged ? (
           <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
         ) : (

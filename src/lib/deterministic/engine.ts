@@ -1,4 +1,4 @@
-import { GITHUB_API_VERSION, GitHubClient, computeTokenFingerprintSync } from "./fetchers/client";
+import { GITHUB_API_VERSION, GitHubClient, TokenUnavailableError, computeTokenFingerprintSync } from "./fetchers/client";
 import { collectEngineData } from "./fetchers/collect";
 import { runBaselineRules } from "./rules/baseline";
 import { runChartRules } from "./rules/charts";
@@ -7,6 +7,7 @@ import { runSignalRules } from "./rules/signals";
 import { runInterpretation } from "./interpretation";
 import { getFallbackToken } from "@/lib/github/http";
 import { getCachedData, setCachedData } from "@/lib/redis";
+import { GITHUB_USERNAME_REGEX } from "@/lib/validation";
 import type { AnalysisMode, AnalysisModeProfile, AnalysisProgressCallback, AnalysisProgressEvent, BudgetSnapshot, EngineResult, RuleResult } from "./types";
 
 export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> = {
@@ -17,7 +18,7 @@ export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> =
     expectedCalls: { minimum: 8, maximum: 18 },
     budget: { rest: 20, graphql: 4, search: 4 },
     repositoryLimit: 2,
-    forkLimit: 1,
+    forkLimit: 0,
     starRepositoryLimit: 0,
     commitDetailLimit: 0,
   },
@@ -28,7 +29,7 @@ export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> =
     expectedCalls: { minimum: 15, maximum: 30 },
     budget: { rest: 30, graphql: 4, search: 4 },
     repositoryLimit: 4,
-    forkLimit: 2,
+    forkLimit: 1,
     starRepositoryLimit: 2,
     commitDetailLimit: 30,
   },
@@ -39,7 +40,7 @@ export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> =
     expectedCalls: { minimum: 25, maximum: 44 },
     budget: { rest: 42, graphql: 6, search: 4 },
     repositoryLimit: 6,
-    forkLimit: 1,
+    forkLimit: 2,
     starRepositoryLimit: 2,
     commitDetailLimit: 60,
   },
@@ -65,7 +66,7 @@ export interface AnalyzeOptions {
 
 const normalizeUsername = (value: string) => {
   const username = value.trim();
-  if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(username)) {
+  if (username.length < 1 || username.length > 39 || !GITHUB_USERNAME_REGEX.test(username)) {
     throw new Error("Invalid GitHub username. Use 1-39 letters, numbers, or single hyphens.");
   }
   return username;
@@ -131,7 +132,15 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   const rawToken = options.token?.trim() ?? "";
   const hasUserToken = Boolean(rawToken);
   const authTier = hasUserToken ? "USER-OAUTH" : "TOKEN-POOL";
-  const tokenOrProvider = hasUserToken ? rawToken : getFallbackToken;
+  const tokenOrProvider = hasUserToken
+    ? rawToken
+    : () => {
+        try {
+          return getFallbackToken();
+        } catch {
+          throw new TokenUnavailableError();
+        }
+      };
 
   // Derive non-reversible token fingerprint to prevent OAuth cross-caller cache leaks
   const tokenFingerprint = hasUserToken ? `oauth:${computeTokenFingerprintSync(rawToken)}` : "pool";
@@ -157,6 +166,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
   });
   const { data, meta: collectionMeta } = await collectEngineData(client, username, {
     profile,
+    authTier,
     onProgress: options.onProgress,
     startedAt,
     signal: options.signal,

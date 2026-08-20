@@ -190,15 +190,16 @@ export const rule4_10CollaboratorNetwork: ChartRule = (data) => {
     for (const contributor of contributors.slice(0, 15)) {
       if (!contributor.login || contributor.login.toLowerCase() === data.username.toLowerCase()) continue;
       nodes.set(contributor.login, (nodes.get(contributor.login) ?? 0) + contributor.contributions);
+      nodes.set(repository, (nodes.get(repository) ?? 0) + contributor.contributions);
       edges.push({ source: data.username, target: contributor.login, weight: contributor.contributions });
       edges.push({ source: contributor.login, target: repository, weight: contributor.contributions });
     }
   }
-  const topNodes = [...nodes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const topNodes = [...nodes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
   const allowed = new Set(topNodes.map(([id]) => id));
   return sampledChart("4.10", "Collaborator network", "network", {
     nodes: topNodes.map(([id, weight]) => ({ id, weight })),
-    edges: edges.filter((edge) => allowed.has(edge.source) && (allowed.has(edge.target) || edge.target.includes("/"))),
+    edges: edges.filter((edge) => allowed.has(edge.source) && allowed.has(edge.target)),
   }, "Top collaborator network from sampled contributor lists.", "contributors endpoint", data.topRepos.length, "GitHub contributor data is cached and may lag.");
 };
 
@@ -433,7 +434,25 @@ export const chartRules: ChartRule[] = [
 ];
 
 export const runChartRules = (data: EngineData, scores: ScoresOutput) =>
-  Object.fromEntries(chartRules.map((rule) => {
-    const result = rule(data, scores);
-    return [result.id, result];
-  })) as Record<string, ChartResult>;
+  Object.fromEntries(
+    chartRules.map((rule, idx) => {
+      try {
+        const result = rule(data, scores);
+        return [result.id, result];
+      } catch (err) {
+        const ruleId = `4.${idx + 1}`;
+        return [
+          ruleId,
+          chart(
+            unavailable(
+              ruleId,
+              `Chart ${ruleId}`,
+              err instanceof Error ? err.message : "Chart evaluation failed",
+              "derived",
+            ),
+            "bar",
+          ),
+        ];
+      }
+    }),
+  ) as Record<string, ChartResult>;

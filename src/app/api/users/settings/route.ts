@@ -3,7 +3,6 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import {
   getUserByGithubId,
-  getUserByUsername,
   upsertUser,
   updateUserSettings,
   getUserScans,
@@ -27,9 +26,6 @@ export async function GET() {
 
   try {
     let user = await getUserByGithubId(session.githubId);
-    if (!user && session.username) {
-      user = await getUserByUsername(session.username);
-    }
     if (!user) {
       try {
         user = await upsertUser({
@@ -70,20 +66,21 @@ export async function GET() {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 10);
 
-    const defaultPrimaryId = user?.settings?.primary_scan_id || unifiedHistory[0]?.id || null;
+    const primaryScanId = user?.settings?.primary_scan_id ?? null;
 
     return NextResponse.json({
       settings: user
         ? {
             ...user.settings,
-            primary_scan_id: defaultPrimaryId,
+            primary_scan_id: primaryScanId,
           }
         : {
             profile_locked: true,
             keep_history: true,
             public_scans: false,
-            primary_scan_id: defaultPrimaryId,
+            primary_scan_id: null,
           },
+      suggestedPrimaryId: unifiedHistory[0]?.id ?? null,
       history: unifiedHistory,
       deterministicHistory: deterministicScans.slice(0, 10),
     });
@@ -119,9 +116,6 @@ export async function PATCH(request: Request) {
     }
 
     let user = await getUserByGithubId(session.githubId);
-    if (!user && session.username) {
-      user = await getUserByUsername(session.username);
-    }
     if (!user) {
       user = await upsertUser({
         github_id: session.githubId,

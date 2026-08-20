@@ -71,13 +71,13 @@ export function OverviewTab({ data }: { data: EngineResult }) {
             <div className="text-[10px] text-gray-400">Peak: {ip.workRhythm.peakDayUtc} UTC {ip.workRhythm.peakHourUtc}:00 | {ip.workRhythm.totalSamples} samples</div>
             <div className="flex items-end gap-px h-12 mt-2">
               {ip.workRhythm.hourly.map((h) => (
-                <div key={h.hour} className="flex-1 rounded-t" style={{ height: `${Math.max(2, h.share * 200)}%`, background: h.hour === ip.workRhythm.peakHourUtc ? "#a855f7" : "rgba(168,85,247,0.25)" }} title={`${h.hour}:00 UTC - ${(h.share * 100).toFixed(1)}%`} />
+                <div key={h.hour} className="flex-1 rounded-t" style={{ height: `${Math.min(100, Math.max(2, h.share * 200))}%`, background: h.hour === ip.workRhythm.peakHourUtc ? "#a855f7" : "rgba(168,85,247,0.25)" }} title={`${h.hour}:00 UTC - ${(h.share * 100).toFixed(1)}%`} />
               ))}
             </div>
             <div className="flex justify-between text-[8px] text-gray-400"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>
             <div className="flex items-end gap-1 h-8 mt-1">
               {ip.workRhythm.daily.map((d) => (
-                <div key={d.day} className="flex-1 rounded-t flex flex-col items-center" style={{ height: `${Math.max(4, d.share * 150)}%`, background: "#67e8f9" }} title={`${d.label}: ${(d.share * 100).toFixed(1)}%`}>
+                <div key={d.day} className="flex-1 rounded-t flex flex-col items-center" style={{ height: `${Math.min(100, Math.max(4, d.share * 150))}%`, background: "#67e8f9" }} title={`${d.label}: ${(d.share * 100).toFixed(1)}%`}>
                   <span className="text-[7px] text-gray-400 mt-auto">{d.label.slice(0, 2)}</span>
                 </div>
               ))}

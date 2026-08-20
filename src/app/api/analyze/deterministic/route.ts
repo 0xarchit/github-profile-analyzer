@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   analyzeGitHubProfile,
   UserNotFoundError,
+  TokenUnavailableError,
   type AnalysisMode,
   type EngineResult,
 } from "@/lib/deterministic";
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
     const scannerToken = session?.accessToken;
-    const isAuthenticated = Boolean(session?.username);
+    const isAuthenticated = Boolean(session?.accessToken && session.accessToken.trim());
     const viewerUser = session
       ? await getUserByGithubId(session.githubId)
       : null;
@@ -186,20 +187,13 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unknown error";
-    if (message.includes("GITHUB_TOKEN") || message.includes("GITHUB_TOKENS")) {
+    if (error instanceof TokenUnavailableError) {
       return NextResponse.json(
         {
           error: "Deterministic engine tokens unavailable.",
-          message: "GitHub API tokens are currently saturated. Please try again shortly.",
+          message: error.message,
         },
         { status: 503 },
-      );
-    }
-    if (message.includes("not found")) {
-      return NextResponse.json(
-        { error: "USER_NOT_FOUND", message: `GitHub user @${username} was not found.` },
-        { status: 404 },
       );
     }
     console.error("[DETERMINISTIC_ROUTE_ERROR]", error);

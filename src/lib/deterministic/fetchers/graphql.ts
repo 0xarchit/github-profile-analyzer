@@ -84,7 +84,7 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
   const to = now.toISOString();
   const from = new Date(now.getTime() - 365 * 86_400_000).toISOString();
   const response = await client.graphql<MainResponse>(MAIN_QUERY, { login: username, from, to }, "profile GraphQL summary");
-  if (!response.user) throw new UserNotFoundError(`GitHub user @${username} was not found.`);
+  if (!response.user) throw new UserNotFoundError(username);
   const collection = response.user.contributionsCollection;
   const calendarDays: GraphQLSummary["calendar"] = collection.contributionCalendar.weeks.flatMap(
     (week, weekIndex) =>

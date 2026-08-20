@@ -17,8 +17,10 @@ export interface AuthIdentity {
 
 export async function fetchAuthIdentity(
   signal?: AbortSignal,
+  options?: { rateLimit?: boolean },
 ): Promise<AuthIdentity | null> {
-  const res = await fetch("/api/auth/me?guest=true", {
+  const url = `/api/auth/me?guest=true${options?.rateLimit ? "&rate_limit=true" : ""}`;
+  const res = await fetch(url, {
     signal,
     cache: "no-store",
     credentials: "same-origin",

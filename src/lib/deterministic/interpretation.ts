@@ -541,14 +541,14 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
   const repositories: InterpretationRepositoryQuality[] = repos.map((repo) => {
     const quality = data.qualities[repo.full_name];
     const security = data.security[repo.full_name];
-    const activeAlerts = 0;
+    const activeAlerts = (security?.codeScanning?.length ?? 0) + (security?.dependabot?.length ?? 0);
     const hasSbom = (security?.sbomPackages.length ?? 0) > 0;
     return {
       repository: repo.full_name,
       readinessScore: [repo.license ? 30 : 0, (quality?.readmeBytes ?? 0) >= 500 ? 30 : 0, quality?.ciPresent ? 25 : 0, (data.releases[repo.full_name]?.length ?? 0) > 0 ? 15 : 0].reduce((sum, value) => sum + value, 0),
       documentation: (quality?.readmeBytes ?? 0) >= 500,
       license: Boolean(repo.license),
-      tests: Boolean(quality?.ciPresent),
+      tests: Boolean(quality?.testsPresent),
       ci: Boolean(quality?.ciPresent),
       releases: data.releases[repo.full_name]?.length ?? 0,
       securityCoverage: (hasSbom ? 60 : 0) + (quality?.ciPresent ? 40 : 0),
@@ -573,7 +573,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
     releaseCoverage: round(releaseCoverage, 4),
     securityCoverage: round(securityCoverage, 4),
     repositories,
-    sourceIds: ["1.15", "2.6", "2.10", "2.12", "4.27"],
+    sourceIds: ["1.19", "2.6", "2.10", "2.12", "4.27"],
   };
 }
 

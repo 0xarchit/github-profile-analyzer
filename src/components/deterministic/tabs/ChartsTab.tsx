@@ -108,7 +108,7 @@ export function ChartsTab({ charts }: { charts: Record<string, ChartResult> }) {
       id: "4.20",
       name: "By Repository",
       title: "Contributions by Repository",
-      render: (val) => <BarChartHorizontal items={(val as any[]).slice(0, 15)} />,
+      render: (val) => <BarChartHorizontal items={Array.isArray(val) ? (val as any[]).slice(0, 15) : []} />,
     },
     {
       id: "4.7",
@@ -158,10 +158,10 @@ export function ChartsTab({ charts }: { charts: Record<string, ChartResult> }) {
       title: "Dependency Ecosystems",
       render: (val) => (
         <PieSimple
-          items={(val as any[]).map((e: any) => ({
+          items={Array.isArray(val) ? (val as any[]).map((e: any) => ({
             label: e.ecosystem,
             value: e.value,
-          }))}
+          })) : []}
         />
       ),
     },

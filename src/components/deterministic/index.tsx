@@ -51,6 +51,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const [isVerifyingAgain, setIsVerifyingAgain] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMode, setSelectedMode] = useState<AnalysisMode>(initialData?.meta?.analysisMode || "deep");
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [progress, setProgress] = useState<AnalysisProgressEvent[]>([]);
   const [currentPhase, setCurrentPhase] = useState("");
   const [budget, setBudget] = useState({ rest: 0, graphql: 0, search: 0 });
@@ -161,12 +162,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
 
   const invalidUsername = !username || username.toLowerCase() === "undefined" || username.toLowerCase() === "null";
 
-  // Sync selectedMode whenever response metadata updates with effective analysisMode
-  useEffect(() => {
-    if (data?.meta?.analysisMode && data.meta.analysisMode !== selectedMode) {
-      setSelectedMode(data.meta.analysisMode);
-    }
-  }, [data?.meta?.analysisMode, selectedMode]);
+
 
   const initialLoadInitiatedRef = useRef<string | null>(null);
 
@@ -198,6 +194,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
 
   const handleRecheckStar = async () => {
     setIsVerifyingAgain(true);
+    setStatusNotice(null);
     try {
       const res = await fetch("/api/star-status?username=" + encodeURIComponent(username));
       const resData = await res.json();
@@ -205,22 +202,23 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         setShowStarModal(false);
         void fetchData(true);
       } else {
-        alert("Star not detected yet. Please ensure you have starred the repository.");
+        setStatusNotice("Star not detected yet. Please ensure you have starred the repository.");
       }
     } catch {
-      alert("Error checking star status. Please try again.");
+      setStatusNotice("Error checking star status. Please try again.");
     } finally {
       setIsVerifyingAgain(false);
     }
   };
 
   const handleModeChange = (newMode: AnalysisMode) => {
+    setStatusNotice(null);
     if (!isLoggedIn && newMode !== "quick") {
       router.push("/api/auth/github");
       return;
     }
     if (!isOwner && newMode === "deep") {
-      alert("Deep mode is reserved for analyzing your own authenticated profile.");
+      setStatusNotice("Deep mode is reserved for analyzing your own authenticated profile.");
       return;
     }
     setSelectedMode(newMode);
@@ -272,6 +270,11 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
             </p>
           </div>
 
+          {statusNotice && (
+            <div className="p-3 bg-red-100 border-2 border-red-500 text-red-700 text-xs font-bold uppercase">
+              {statusNotice}
+            </div>
+          )}
           <div className="space-y-3">
             <a
               href="https://github.com/0xarchit/github-profile-analyzer"
@@ -322,6 +325,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const { scores, interpretation: interp, charts } = data;
   const isHistorical = data.isHistorical;
   const isProfileLocked = data.isLocked;
+  const effectiveMode = (data?.meta?.analysisMode ?? selectedMode) as AnalysisMode;
 
   return (
     <main className="min-h-screen" style={{ background: "#fdfcf0", color: "#000000" }}>
@@ -330,7 +334,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
           {/* Mode Selector */}
           <div className="hidden sm:flex items-center bg-white border-2 border-black p-0.5 rounded-lg text-xs font-bold">
             {(["quick", "standard", "deep"] as AnalysisMode[]).map((mode) => {
-              const isActive = selectedMode === mode;
+              const isActive = effectiveMode === mode;
               const isLockedMode = !isLoggedIn && mode !== "quick";
               return (
                 <button
@@ -364,6 +368,12 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
       </Header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+        {statusNotice && (
+          <div className="p-3 bg-yellow-100 border-3 border-black shadow-neo flex items-center justify-between text-xs font-heading uppercase text-black">
+            <span>{statusNotice}</span>
+            <button onClick={() => setStatusNotice(null)} className="font-bold underline text-[10px]">Dismiss</button>
+          </div>
+        )}
         {/* HERO */}
         <section
           className="flex flex-col lg:flex-row items-start gap-8 pb-8"
@@ -382,7 +392,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
                   Deterministic
                 </span>
                 <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-neo-pink text-white border-2 border-black">
-                  {selectedMode.toUpperCase()}
+                  {effectiveMode.toUpperCase()}
                 </span>
                 {isProfileLocked && (
                   <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-gray-200 text-black border-2 border-black flex items-center gap-1">

@@ -19,7 +19,7 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchAuthIdentity(controller.signal)
+    void fetchAuthIdentity(controller.signal, { rateLimit: true })
       .then((identity) => {
         setUser(identity);
       })
@@ -202,20 +202,27 @@ export default function Home() {
                 </div>
 
                 <div className="inline-flex border-2 border-black bg-neo-bg p-1 gap-1 w-full sm:w-auto">
-                  {(["quick", "standard", "deep"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setDeterministicMode(mode)}
-                      className={`flex-1 sm:flex-none px-3 py-1.5 text-[9px] sm:text-[10px] font-heading font-black uppercase transition-all ${
-                        deterministicMode === mode
-                          ? "bg-black text-white shadow-neo-sm"
-                          : "bg-white text-black hover:bg-neo-yellow"
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
+                  {(["quick", "standard", "deep"] as const).map((mode) => {
+                    const isDeepRestricted = mode === "deep" && Boolean(username.trim() && user?.username && user.username.toLowerCase() !== username.trim().toLowerCase());
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={isDeepRestricted}
+                        title={isDeepRestricted ? "Deep mode is exclusive to profile owner (capped at standard)" : undefined}
+                        onClick={() => setDeterministicMode(mode)}
+                        className={`flex-1 sm:flex-none px-3 py-1.5 text-[9px] sm:text-[10px] font-heading font-black uppercase transition-all ${
+                          isDeepRestricted
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed line-through"
+                            : deterministicMode === mode
+                              ? "bg-black text-white shadow-neo-sm"
+                              : "bg-white text-black hover:bg-neo-yellow"
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -35,7 +35,11 @@ const allCommits = (data: EngineData) => {
 const punchBuckets = (data: EngineData) => {
   const buckets = Array.from({ length: 168 }, () => 0);
   for (const cards of Object.values(data.punchCards)) {
-    for (const [day, hour, count] of cards) buckets[day * 24 + hour] = (buckets[day * 24 + hour] ?? 0) + count;
+    for (const [day, hour, count] of cards) {
+      if (typeof day === "number" && day >= 0 && day <= 6 && typeof hour === "number" && hour >= 0 && hour <= 23) {
+        buckets[day * 24 + hour] = (buckets[day * 24 + hour] ?? 0) + (typeof count === "number" ? count : 0);
+      }
+    }
   }
   return buckets;
 };
@@ -321,7 +325,8 @@ export const rule3_25ReviewDepth: SignalRule = (data) => {
 
 export const rule3_26ForkAndForget: SignalRule = (data) => {
   const matches = Object.entries(data.forkComparisons).filter(([, item]) => item.ahead_by > 0 && item.prCount === 0).map(([repository, item]) => ({ repository, aheadBy: item.ahead_by }));
-  return signal(sampled("3.26", "Fork and forget", matches, `${matches.length} sampled forks are ahead of upstream with no PR associated with the latest sampled commit.`, "compare + commit pulls", Object.keys(data.forkComparisons).length, "Capped at five forks; latest-commit PR association is a best-effort proxy."), matches.length > 0);
+  const forkLimit = data.sampled["fork-activity"]?.size ?? 5;
+  return signal(sampled("3.26", "Fork and forget", matches, `${matches.length} sampled forks are ahead of upstream with no PR associated with the latest sampled commit.`, "compare + commit pulls", Object.keys(data.forkComparisons).length, `Capped at ${forkLimit} forks; latest-commit PR association is a best-effort proxy.`), matches.length > 0);
 };
 
 export const rule3_27AuthoredIssueResponse: SignalRule = (data) => {
@@ -479,7 +484,25 @@ export const signalRules: SignalRule[] = [
 ];
 
 export const runSignalRules = (data: EngineData) =>
-  Object.fromEntries(signalRules.map((rule) => {
-    const result = rule(data);
-    return [result.id, result];
-  })) as Record<string, SignalResult>;
+  Object.fromEntries(
+    signalRules.map((rule, idx) => {
+      try {
+        const result = rule(data);
+        return [result.id, result];
+      } catch (err) {
+        const ruleId = `3.${idx + 1}`;
+        return [
+          ruleId,
+          signal(
+            unavailable(
+              ruleId,
+              `Signal ${ruleId}`,
+              err instanceof Error ? err.message : "Signal rule evaluation failed",
+              "derived",
+            ),
+            false,
+          ),
+        ];
+      }
+    }),
+  ) as Record<string, SignalResult>;

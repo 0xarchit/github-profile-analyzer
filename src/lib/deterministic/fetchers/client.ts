@@ -11,6 +11,13 @@ export class UserNotFoundError extends Error {
   }
 }
 
+export class TokenUnavailableError extends Error {
+  constructor(message = "GitHub API tokens are currently saturated. Please try again shortly.") {
+    super(message);
+    this.name = "TokenUnavailableError";
+  }
+}
+
 export class BudgetExceededError extends Error {
   constructor(public readonly bucket: Bucket, public readonly label: string) {
     super(`${bucket} call budget exhausted before ${label}`);
@@ -342,16 +349,44 @@ export class GitHubClient {
         }
       }
 
-      const body = (await response.json()) as { data?: T; errors?: Array<{ message: string }> };
+      if (!response.ok) {
+        let errBody: unknown = null;
+        try {
+          errBody = await response.json();
+        } catch {
+          /* ignore */
+        }
+        throw new GitHubRequestError(
+          `GraphQL request failed with HTTP ${response.status}`,
+          response.status,
+          "https://api.github.com/graphql",
+          errBody,
+        );
+      }
+
+      let body: { data?: T; errors?: Array<{ message: string }> };
+      try {
+        body = (await response.json()) as { data?: T; errors?: Array<{ message: string }> };
+      } catch (jsonErr) {
+        throw new GitHubRequestError(
+          "Failed to parse GraphQL response JSON",
+          response.status,
+          "https://api.github.com/graphql",
+          jsonErr,
+        );
+      }
+
       if (!body.data) {
         throw new GitHubRequestError(
-          body.errors?.map((error) => error.message).join("; ") || `GraphQL request failed (${response.status})`,
+          body.errors?.map((error) => error.message).join("; ") || `GraphQL request returned no data (${response.status})`,
           response.status,
           "https://api.github.com/graphql",
           body,
         );
       }
-      writeEndpointCache(cacheKey, body.data, response.headers);
+      if (!body.errors || body.errors.length === 0) {
+        writeEndpointCache(cacheKey, body.data, response.headers);
+      }
       return body.data;
     }
     throw new GitHubRequestError(`GraphQL ${label} failed after retries`, 503, "https://api.github.com/graphql", null);

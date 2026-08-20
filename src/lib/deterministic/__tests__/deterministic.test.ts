@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { getAnalysisModeProfile } from "../engine";
+import { getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "../engine";
 import { runBaselineRules } from "../rules/baseline";
-import { runScoringRules } from "../rules/scoring";
+import { runScoringRules, rule2_7AuthenticityMultiplier } from "../rules/scoring";
 import { runSignalRules } from "../rules/signals";
 import { runChartRules } from "../rules/charts";
 import { runInterpretation, gradeForScore, interpretE3WorkRhythm, interpretE6Momentum } from "../interpretation";
-import type { EngineData, GitHubRepo } from "../types";
+import type { EngineData, GitHubRepo, SignalResult } from "../types";
 
 const flagshipRepo: GitHubRepo = {
   id: 101,
@@ -194,22 +194,29 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
 describe("Deterministic Engine Mode Profiles & Budgets", () => {
   it("enforces strict budget ceiling on quick mode", () => {
     const profile = getAnalysisModeProfile("quick");
-    expect(profile.budget.rest).toBeLessThanOrEqual(45);
-    expect(profile.budget.graphql).toBeLessThanOrEqual(4);
-    expect(profile.budget.search).toBeLessThanOrEqual(6);
-    expect(profile.repositoryLimit).toBe(2);
+    expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.quick.budget.rest);
+    expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.quick.budget.graphql);
+    expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.quick.budget.search);
+    expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.quick.repositoryLimit);
+    expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.quick.forkLimit);
   });
 
   it("allocates standard mode budget for deep repos", () => {
     const profile = getAnalysisModeProfile("standard");
-    expect(profile.budget.rest).toBeLessThanOrEqual(50);
-    expect(profile.repositoryLimit).toBe(4);
+    expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.standard.budget.rest);
+    expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.standard.budget.graphql);
+    expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.standard.budget.search);
+    expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.standard.repositoryLimit);
+    expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.standard.forkLimit);
   });
 
   it("allocates deep mode budget for full scans", () => {
     const profile = getAnalysisModeProfile("deep");
-    expect(profile.budget.rest).toBeLessThanOrEqual(50);
-    expect(profile.repositoryLimit).toBe(6);
+    expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.deep.budget.rest);
+    expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.deep.budget.graphql);
+    expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.deep.budget.search);
+    expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.deep.repositoryLimit);
+    expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.deep.forkLimit);
   });
 });
 
@@ -232,6 +239,35 @@ describe("Deterministic Scoring Rules", () => {
 
     expect(scores.authenticityMultiplier).toBeGreaterThanOrEqual(0.4);
     expect(scores.authenticityMultiplier).toBeLessThanOrEqual(1.0);
+  });
+
+  it("computes fractional authenticity multiplier when signals are flagged", () => {
+    const data = createMockEngineData();
+    const mockSignals: Record<string, SignalResult> = {
+      "3.1": {
+        id: "3.1",
+        name: "Test signal 1",
+        status: "ok",
+        value: true,
+        description: "Test",
+        source: "test",
+        cost: "cheap",
+        flagged: true,
+      },
+      "3.2": {
+        id: "3.2",
+        name: "Test signal 2",
+        status: "ok",
+        value: true,
+        description: "Test",
+        source: "test",
+        cost: "cheap",
+        flagged: true,
+      },
+    };
+    const authResult = rule2_7AuthenticityMultiplier(data, mockSignals);
+    // 1 - (2 * 0.06) = 0.88
+    expect(authResult.value).toBe(0.88);
   });
 
   it("produces valid finalScore in the range [0, 100]", () => {

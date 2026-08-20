@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { UsernameSchema } from "@/lib/validation";
 
 export const runtime = "edge";
 
@@ -8,9 +9,11 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const REDIRECT_URI = `${APP_URL}/api/auth/github/callback`;
 
 export async function GET(request: Request) {
-  const isDev = process.env.NODE_ENV === "development" || process.env.ENV === "dev" || process.env.NEXT_PUBLIC_ENV === "dev";
+  const isDev = process.env.NODE_ENV !== "production";
   const { searchParams } = new URL(request.url);
-  const devUserParam = searchParams.get("username") || "local-dev";
+  const rawDevUser = searchParams.get("username") || "local-dev";
+  const parsedUser = UsernameSchema.safeParse(rawDevUser);
+  const devUserParam = parsedUser.success ? parsedUser.data : "local-dev";
 
   if (!GITHUB_CLIENT_ID) {
     if (isDev) {
