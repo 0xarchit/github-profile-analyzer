@@ -343,7 +343,7 @@ export class GitHubClient {
       }
 
       const body = (await response.json()) as { data?: T; errors?: Array<{ message: string }> };
-      if (!response.ok || !body.data) {
+      if (!body.data) {
         throw new GitHubRequestError(
           body.errors?.map((error) => error.message).join("; ") || `GraphQL request failed (${response.status})`,
           response.status,

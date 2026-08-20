@@ -71,6 +71,12 @@ const sampledChart = <T>(
 ) => chart(withStatus(id, name, "sampled", value, description, source, cost, caveat, size), kind);
 
 export const rule4_1ContributionCalendar: ChartRule = (data) => {
+  if (!data.graphql.calendar || !data.graphql.calendar.length) {
+    return chart(
+      unavailable("4.1", "Contribution calendar", "GraphQL contribution calendar data was unavailable or restricted.", "GraphQL contributionCalendar", "cheap"),
+      "heatmap",
+    );
+  }
   let currentWeek = 0;
   const days = data.graphql.calendar.map((day, index) => {
     if (index > 0 && day.weekday === 0) {
@@ -223,18 +229,28 @@ export const rule4_14LeaderboardPercentiles: ChartRule = () =>
   chart(unavailable("4.14", "Leaderboard percentile bars", "Leaderboard persistence and population distributions are explicitly out of scope for this token-pool engine.", "Internal leaderboard distribution", "cheap"), "bar");
 
 export const rule4_15CumulativeStars: ChartRule = (data) => {
+  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
+  if (totalStargazers === 0) {
+    return chart(
+      unavailable("4.15", "Cumulative star history", "No star history timestamps found or stargazer sampling was skipped.", "stargazers star+json", "expensive"),
+      "line",
+    );
+  }
   const series = Object.entries(data.stargazers).map(([repository, events]) => ({
     repository,
     points: [...events].sort((a, b) => a.starred_at.localeCompare(b.starred_at)).map((event, index) => ({ at: event.starred_at, cumulative: index + 1 })),
   }));
-  // Cache the flat stargazer count to avoid two .flat() calls.
-  const totalStargazers = Object.values(data.stargazers).reduce((sum, arr) => sum + arr.length, 0);
   return sampledChart("4.15", "Cumulative star history", "line", series, "Sampled cumulative star timestamps for top repositories.", "stargazers star+json", totalStargazers, "Top three repositories and first 100 stargazers each.", "expensive");
 };
 
 export const rule4_16StarVelocity: ChartRule = (data) => {
-  // Cache flat stargazers to avoid two Object.values().flat() calls.
   const allStars = Object.values(data.stargazers).flat();
+  if (!allStars.length) {
+    return chart(
+      unavailable("4.16", "Star velocity", "No star event history available across sampled repositories.", "stargazers star+json", "expensive"),
+      "bar",
+    );
+  }
   const months = new Map<string, number>();
   for (const event of allStars) {
     const month = event.starred_at.slice(0, 7);
