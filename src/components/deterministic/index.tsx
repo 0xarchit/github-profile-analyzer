@@ -80,6 +80,10 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         setIsRefreshing(force);
         setError(null);
         setProgress([]);
+        if (force) {
+          setData(null);
+          setElapsed(0);
+        }
         const url = `/api/analyze/deterministic/stream?username=${encodeURIComponent(username)}&mode=${modeToUse}${force ? "&force=true" : ""}`;
         const es = new EventSource(url);
         esRef.current = es;

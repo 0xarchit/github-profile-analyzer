@@ -346,9 +346,27 @@ export async function collectEngineData(
     async () => (await fetchRateLimit(client)).data,
   );
   const resources = (rateLimit as {
-    resources?: { core?: { remaining?: number }; search?: { remaining?: number } };
+    resources?: {
+      core?: { remaining?: number; limit?: number };
+      search?: { remaining?: number; limit?: number };
+      graphql?: { remaining?: number; limit?: number };
+    };
   } | null)?.resources;
-  const allowExpensive = profile.commitDetailLimit > 0 && (resources?.core?.remaining ?? 5_000) >= 200;
+
+  const coreRemaining = resources?.core?.remaining ?? 5_000;
+  const graphqlRemaining = resources?.graphql?.remaining ?? 5_000;
+  const minRequiredCore = profile.budget.rest;
+  const minRequiredGraphql = profile.budget.graphql;
+
+  if (coreRemaining < minRequiredCore || graphqlRemaining < minRequiredGraphql) {
+    const isUserToken = client["tokenFingerprint"]?.startsWith("oauth:");
+    const tokenSource = isUserToken ? "Your linked GitHub account token" : "The server token pool";
+    throw new Error(
+      `RATE_LIMIT_DEPLETED: ${tokenSource} has only ${coreRemaining} REST / ${graphqlRemaining} GraphQL calls remaining. ${profile.label} mode requires at least ${minRequiredCore} REST / ${minRequiredGraphql} GraphQL quota. Please try again later or select a lighter mode.`,
+    );
+  }
+
+  const allowExpensive = profile.commitDetailLimit > 0 && coreRemaining >= 200;
   const allowSearch = (resources?.search?.remaining ?? 30) >= 5;
   if (!allowExpensive) {
     const reason = profile.commitDetailLimit === 0
