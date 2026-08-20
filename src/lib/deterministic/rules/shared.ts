@@ -52,7 +52,7 @@ export const standardDeviation = (values: number[]) => {
     m += delta / (i + 1);
     s += delta * (values[i]! - m);
   }
-  return Math.sqrt(s / (values.length - 1 > 0 ? values.length : 1));
+  return Math.sqrt(s / (values.length - 1));
 };
 export const coefficientOfVariation = (values: number[]) => {
   const average = mean(values);

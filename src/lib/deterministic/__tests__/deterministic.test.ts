@@ -328,6 +328,6 @@ describe("Deterministic Interpretation Layer & Boundaries", () => {
       },
     });
     const momentum = interpretE6Momentum(surgingData);
-    expect(["Surging", "Accelerating", "Steady"]).toContain(momentum.label);
+    expect(momentum.label).toBe("Accelerating");
   });
 });

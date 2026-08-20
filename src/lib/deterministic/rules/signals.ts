@@ -150,7 +150,8 @@ export const rule3_8ForkOnlyContributor: SignalRule = (data) => {
   const contributed = Object.values(data.forkComparisons).filter((item) => item.ahead_by > 0).length;
   const weightedLines = Object.entries(data.forkComparisons).map(([repository, comparison]) => ({ repository, uniqueCommits: comparison.ahead_by }));
   const value = { forks, sampledComparisons: Object.keys(data.forkComparisons).length, contributed, contributedRatio: round(ratio(contributed, forks), 4), weightedLines };
-  return sampledSignal("3.8", "Fork-only contribution pattern", value, `${contributed} sampled forks contain commits ahead of upstream.`, "compare endpoint + commit details", forks >= 5 && contributed === 0, Object.keys(data.forkComparisons).length, "Fork comparison is capped at five repositories.", "expensive");
+  const forkLimit = data.sampled["fork-activity"]?.size ?? 5;
+  return sampledSignal("3.8", "Fork-only contribution pattern", value, `${contributed} sampled forks contain commits ahead of upstream.`, "compare endpoint + commit details", forks >= 5 && contributed === 0, Object.keys(data.forkComparisons).length, `Fork comparison is capped at ${forkLimit} repositories.`, "expensive");
 };
 
 export const rule3_9RepoCreationClustering: SignalRule = (data) => {

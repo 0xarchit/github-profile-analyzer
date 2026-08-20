@@ -473,14 +473,15 @@ function mapDeterministicScanRow(r: Record<string, unknown>): DeterministicScan 
     letter_grade: r.letter_grade ? String(r.letter_grade) : null,
     archetype: r.archetype ? String(r.archetype) : null,
     data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
-    duration_ms: r.duration_ms ? Number(r.duration_ms) : null,
+    duration_ms: r.duration_ms !== null && r.duration_ms !== undefined ? Number(r.duration_ms) : null,
     api_calls_used: Number(r.api_calls_used || 0),
     created_at: String(r.created_at),
   };
 }
 
 /**
- * Persists a deterministic engine analysis result to the deterministic_scans table.
+ * Persists a deterministic engine analysis result to the deterministic_scans table
+ * and maintains at most 10 rows per user.
  */
 export async function saveDeterministicScan(
   userId: number,
@@ -494,16 +495,34 @@ export async function saveDeterministicScan(
   apiCallsUsed?: number,
 ): Promise<DeterministicScan | null> {
   try {
+    const roundedOverallScore = Math.round(overallScore);
     const rows = await sql`
-      INSERT INTO deterministic_scans (
-        user_id, username, mode, overall_score, letter_grade, archetype, data, duration_ms, api_calls_used
+      WITH inserted AS (
+        INSERT INTO deterministic_scans (
+          user_id, username, mode, overall_score, letter_grade, archetype, data, duration_ms, api_calls_used
+        )
+        VALUES (
+          ${userId}, ${username.trim()}, ${mode}, ${roundedOverallScore},
+          ${letterGrade ?? null}, ${archetype ?? null}, ${JSON.stringify(data)},
+          ${durationMs ?? null}, ${apiCallsUsed ?? 0}
+        )
+        RETURNING *
+      ),
+      ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY user_id
+                 ORDER BY created_at DESC, id DESC
+               ) AS row_num
+        FROM deterministic_scans
+        WHERE user_id = ${userId}
+      ),
+      deleted AS (
+        DELETE FROM deterministic_scans
+        WHERE id IN (SELECT id FROM ranked WHERE row_num > 10)
+        RETURNING id
       )
-      VALUES (
-        ${userId}, ${username.trim()}, ${mode}, ${overallScore},
-        ${letterGrade ?? null}, ${archetype ?? null}, ${JSON.stringify(data)},
-        ${durationMs ?? null}, ${apiCallsUsed ?? 0}
-      )
-      RETURNING *
+      SELECT * FROM inserted
     `;
     return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
   } catch (err) {

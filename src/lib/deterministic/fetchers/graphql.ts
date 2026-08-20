@@ -1,6 +1,27 @@
 import type { GraphQLSummary, GitHubRepo, RepoIssueSummary } from "../types";
 import { hoursBetween } from "../rules/shared";
-import { GitHubClient } from "./client";
+import { GitHubClient, UserNotFoundError } from "./client";
+
+export const emptyGraphQLSummary = (): GraphQLSummary => ({
+  totalContributions: 0,
+  restrictedContributionsCount: 0,
+  totalPullRequestReviewContributions: 0,
+  totalPullRequestContributions: 0,
+  totalIssueContributions: 0,
+  totalDiscussionCommentContributions: 0,
+  contributionYears: [],
+  calendar: [],
+  contributionsByRepo: [],
+  pinnedItems: [],
+  starredRepositoriesCount: 0,
+  sponsoringCount: 0,
+  sponsorCount: 0,
+  repositoriesContributedToCount: 0,
+  pullRequests: [],
+  reviews: [],
+  graphqlCost: 0,
+  graphqlRemaining: 0,
+});
 
 const MAIN_QUERY = `
 query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!) {
@@ -63,7 +84,7 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
   const to = now.toISOString();
   const from = new Date(now.getTime() - 365 * 86_400_000).toISOString();
   const response = await client.graphql<MainResponse>(MAIN_QUERY, { login: username, from, to }, "profile GraphQL summary");
-  if (!response.user) throw new Error(`GitHub user ${username} was not found.`);
+  if (!response.user) throw new UserNotFoundError(`GitHub user @${username} was not found.`);
   const collection = response.user.contributionsCollection;
   return {
     totalContributions: collection.contributionCalendar.totalContributions,

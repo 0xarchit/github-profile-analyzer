@@ -96,7 +96,7 @@ export function MetaTab({ data, expandedBaselines, setExpandedBaselines }: Props
 
       {/* Baseline Rules */}
       <section className="rounded-xl p-5" style={{ background: "white", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }}>
-        <button onClick={() => setExpandedBaselines(!expandedBaselines)} className="flex items-center gap-2 text-sm font-heading text-black w-full">
+        <button type="button" onClick={() => setExpandedBaselines(!expandedBaselines)} className="flex items-center gap-2 text-sm font-heading text-black w-full">
           {expandedBaselines ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           Baseline Rules ({Object.keys(baseline).length})
         </button>

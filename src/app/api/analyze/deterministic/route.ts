@@ -202,6 +202,13 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
-    return NextResponse.json({ error: message, message }, { status: 500 });
+    console.error("[DETERMINISTIC_ROUTE_ERROR]", error);
+    return NextResponse.json(
+      {
+        error: "ANALYSIS_FAILED",
+        message: "An error occurred while analyzing this profile. Please try again.",
+      },
+      { status: 500 },
+    );
   }
 }

@@ -155,14 +155,20 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
     [username, selectedMode],
   );
 
+  const invalidUsername = !username || username.toLowerCase() === "undefined" || username.toLowerCase() === "null";
+
+  // Sync selectedMode whenever response metadata updates with effective analysisMode
+  useEffect(() => {
+    if (data?.meta?.analysisMode && data.meta.analysisMode !== selectedMode) {
+      setSelectedMode(data.meta.analysisMode);
+    }
+  }, [data?.meta?.analysisMode, selectedMode]);
+
   const initialLoadInitiatedRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (invalidUsername) return;
     const safeUsername = (username || "").toLowerCase();
-    if (!username || safeUsername === "undefined" || safeUsername === "null") {
-      setError("INVALID_ID");
-      return;
-    }
 
     void fetchAuthIdentity()
       .then((identity) => {
@@ -178,7 +184,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
       initialLoadInitiatedRef.current = safeUsername;
       void fetchData();
     }
-  }, [username, initialData, fetchData]);
+  }, [username, invalidUsername, initialData, fetchData]);
 
   useEffect(() => {
     if (data || error || showStarModal) return;
@@ -226,6 +232,11 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
     });
   }, []);
 
+  // --- INVALID IDENTIFIER ---
+  if (invalidUsername) {
+    return <ErrorScreen error="INVALID_ID" router={router} />;
+  }
+
   // --- STAR GATE MODAL ---
   if (showStarModal) {
     return (
@@ -268,6 +279,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
               Star Repository
             </a>
             <button
+              type="button"
               onClick={handleRecheckStar}
               disabled={isVerifyingAgain}
               className="neo-button bg-neo-green text-center text-lg py-4 w-full disabled:opacity-50 font-bold"
@@ -275,6 +287,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
               {isVerifyingAgain ? "Rechecking..." : "Recheck Star Status"}
             </button>
             <button
+              type="button"
               onClick={() => router.push("/")}
               className="neo-button bg-neo-pink text-white text-lg py-4 w-full font-bold"
             >
@@ -286,8 +299,11 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
     );
   }
 
+  // --- ERROR ---
+  if (error) return <ErrorScreen error={error} router={router} />;
+
   // --- LOADING ---
-  if (!data && !error) {
+  if (!data) {
     return (
       <LoadingScreen
         username={username}
@@ -298,11 +314,6 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
       />
     );
   }
-
-  // --- ERROR ---
-  if (error) return <ErrorScreen error={error} router={router} />;
-
-  if (!data) return null;
 
   const { scores, interpretation: interp, charts } = data;
   const isHistorical = data.isHistorical;
@@ -319,6 +330,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
               const isLockedMode = !isLoggedIn && mode !== "quick";
               return (
                 <button
+                  type="button"
                   key={mode}
                   onClick={() => handleModeChange(mode)}
                   className={`px-3 py-1 uppercase rounded transition-all flex items-center gap-1 ${
@@ -336,6 +348,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
 
           {(isOwner || !isProfileLocked) && (
             <button
+              type="button"
               onClick={() => fetchData(true)}
               disabled={isRefreshing}
               className="neo-button bg-neo-green text-xs font-bold flex items-center gap-2"
@@ -402,6 +415,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         <nav className="flex gap-2 overflow-x-auto pb-2" style={{ borderBottom: "3px solid black" }}>
           {TABS.map(([key, label]) => (
             <button
+              type="button"
               key={key}
               onClick={() => setActiveTab(key)}
               className={`px-4 py-2 text-xs font-heading uppercase transition-all ${
@@ -577,6 +591,7 @@ function ErrorScreen({ error, router }: { error: string; router: ReturnType<type
         <h2 className="text-3xl font-heading uppercase text-black">Engine Failure</h2>
         <p className="text-sm text-black font-mono">{error}</p>
         <button
+          type="button"
           onClick={() => router.push("/")}
           className="w-full py-3 neo-button bg-neo-yellow font-bold text-sm"
         >

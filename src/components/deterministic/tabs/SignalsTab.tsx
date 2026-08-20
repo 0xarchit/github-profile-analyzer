@@ -29,8 +29,8 @@ export function SignalsTab({ data, expandedSignals, toggleSignal }: Props) {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-heading text-black flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-yellow-600" /> Anomaly Signals ({flaggedSignals.length} flagged / {allSignals.length} total)</h2>
         <div className="flex gap-2">
-          <button onClick={expandAll} className="px-3 py-1 rounded text-[10px] font-heading uppercase" style={{ background: "#e0f7fa", border: "3px solid black", color: "#22d3ee" }}>Expand All</button>
-          <button onClick={collapseAll} className="px-3 py-1 rounded text-[10px] font-heading uppercase" style={{ background: "#e8e6d8", border: "3px solid black", color: "#94a3b8" }}>Collapse All</button>
+          <button type="button" onClick={expandAll} className="px-3 py-1 rounded text-[10px] font-heading uppercase" style={{ background: "#e0f7fa", border: "3px solid black", color: "#0e7490" }}>Expand All</button>
+          <button type="button" onClick={collapseAll} className="px-3 py-1 rounded text-[10px] font-heading uppercase" style={{ background: "#e8e6d8", border: "3px solid black", color: "#334155" }}>Collapse All</button>
         </div>
       </div>
       <div className="flex gap-3">

@@ -112,15 +112,31 @@ export const rule2_8MaintenanceScore: ScoreRule = (data) => {
       if (days <= 180) pushed180++;
     }
   }
-  const medianAge = median(ageDays);
-  return score("2.8", "Maintenance score", weightedAverage([[ratio(pushed90, repos.length) * 100, 0.4], [ratio(pushed180, repos.length) * 100, 0.25], [clamp(100 - medianAge / 3), 0.25], [(1 - ratio(archived, repos.length)) * 100, 0.1]]), "Recency and archived-ratio maintenance curve.", "GET /users/{u}/repos", { pushedWithin90Days: pushed90, pushedWithin180Days: pushed180, medianDaysSincePush: medianAge });
+  const medianAge = ageDays.length ? median(ageDays) : null;
+  const pairs: Array<[number, number]> = [
+    [ratio(pushed90, repos.length) * 100, 0.4],
+    [ratio(pushed180, repos.length) * 100, 0.25],
+    [(1 - ratio(archived, repos.length)) * 100, 0.1],
+  ];
+  if (medianAge !== null) {
+    pairs.push([clamp(100 - medianAge / 3), 0.25]);
+  }
+  return score("2.8", "Maintenance score", weightedAverage(pairs), "Recency and archived-ratio maintenance curve.", "GET /users/{u}/repos", { pushedWithin90Days: pushed90, pushedWithin180Days: pushed180, medianDaysSincePush: medianAge });
 };
 
 export const rule2_9ReleaseDisciplineScore: ScoreRule = (data) => {
   const releases = Object.values(data.releases).flat();
   const semver = releases.filter((release) => /^v?\d+\.\d+\.\d+$/.test(release.tag_name)).length;
   const latest = releases.flatMap((release) => release.published_at ? [daysBetween(release.published_at, data.now)] : []);
-  return score("2.9", "Release discipline score", weightedAverage([[saturatingScore(releases.length, 0.22), 0.45], [ratio(semver, releases.length) * 100, 0.3], [clamp(100 - median(latest) / 3), 0.25]]), "Release count, semver-tag ratio, and latest-release recency.", "GET /repos/{o}/{r}/releases", { releases: releases.length, semver, medianDaysSinceRelease: median(latest) });
+  const medianAge = latest.length ? median(latest) : null;
+  const pairs: Array<[number, number]> = [
+    [saturatingScore(releases.length, 0.22), 0.45],
+    [ratio(semver, releases.length) * 100, 0.3],
+  ];
+  if (medianAge !== null) {
+    pairs.push([clamp(100 - medianAge / 3), 0.25]);
+  }
+  return score("2.9", "Release discipline score", weightedAverage(pairs), "Release count, semver-tag ratio, and latest-release recency.", "GET /repos/{o}/{r}/releases", { releases: releases.length, semver, medianDaysSinceRelease: medianAge });
 };
 
 export const rule2_10DocumentationScore: ScoreRule = (data) => {

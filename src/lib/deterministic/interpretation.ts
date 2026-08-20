@@ -539,7 +539,6 @@ export function interpretE10RoleProfile(
 
 export function interpretE11QualityProfile(data: EngineData): InterpretationQualityProfile {
   const repos = data.topRepos.filter((repo) => !repo.fork && repo.owner.login.toLowerCase() === data.username.toLowerCase());
-  const securityValues = Object.values(data.security);
   const repositories: InterpretationRepositoryQuality[] = repos.map((repo) => {
     const quality = data.qualities[repo.full_name];
     const security = data.security[repo.full_name];
@@ -562,7 +561,7 @@ export function interpretE11QualityProfile(data: EngineData): InterpretationQual
   const testCoverage = ratio(repositories.filter((repo) => repo.tests).length, denominator);
   const ciCoverage = ratio(repositories.filter((repo) => repo.ci).length, denominator);
   const releaseCoverage = ratio(repositories.filter((repo) => repo.releases > 0).length, denominator);
-  const securityCoverage = ratio(repositories.filter((repo) => repo.securityCoverage > 0).length, denominator || Math.max(1, securityValues.length));
+  const securityCoverage = ratio(repositories.filter((repo) => repo.securityCoverage > 0).length, denominator);
   const score = round(weightedAverage([[documentationCoverage * 100, 0.2], [licenseCoverage * 100, 0.2], [testCoverage * 100, 0.15], [ciCoverage * 100, 0.15], [releaseCoverage * 100, 0.15], [securityCoverage * 100, 0.15]]), 1);
   return {
     score,

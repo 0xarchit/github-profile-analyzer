@@ -35,7 +35,26 @@ import {
   fetchUserStarred,
   searchIssues,
 } from "./endpoints";
-import { fetchAuthoredIssueResponseHours, fetchGraphQLSummary, fetchRepoIssueSummaries } from "./graphql";
+import { fetchAuthoredIssueResponseHours, fetchGraphQLSummary, fetchRepoIssueSummaries, emptyGraphQLSummary } from "./graphql";
+
+async function mapConcurrent<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let currentIndex = 0;
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (currentIndex < items.length) {
+      const idx = currentIndex++;
+      results[idx] = await fn(items[idx]!, idx);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
 
 interface CollectionMeta {
   githubRateLimit: Record<string, unknown> | null;
@@ -362,7 +381,7 @@ export async function collectEngineData(
 
   emit("phase", "public-activity", "Collecting contribution history, public activity, social edges, and search totals.");
   const [graphql, events, orgs, gists, subscriptions, followers, following, userStarred, profileReadmeRaw, search] = await Promise.all([
-    fetchGraphQLSummary(client, username, now),
+    safe(unavailable, "graphql-summary", emptyGraphQLSummary(), async () => fetchGraphQLSummary(client, username, now)),
     fetchThreePages((page) => fetchPublicEventsPage(client, username, page), unavailable, "events"),
     safe(unavailable, "orgs", [], async () => (await fetchPublicOrgs(client, username)).data),
     safe(unavailable, "gists", [], async () => (await fetchGists(client, username)).data),
@@ -405,7 +424,7 @@ export async function collectEngineData(
   const security: EngineData["security"] = {};
 
   emit("phase", "repository-enrichment", `Enriching ${topRepos.length} top repositories with languages, releases, branches, commits, stats, and quality checks.`);
-  await Promise.all(topRepos.map(async (repo) => {
+  await mapConcurrent(topRepos, 4, async (repo) => {
     const owner = repo.owner.login;
     const key = repo.full_name;
     const isQuick = profile.id === "quick";
@@ -448,7 +467,7 @@ export async function collectEngineData(
     punchCards[key] = results[7];
     contributors[key] = results[8];
     qualities[key] = results[9];
-  }));
+  });
   sampled["repository-enrichment"] = {
     size: topRepos.length,
     note: `Moderate repository rules are capped at the top ${profile.repositoryLimit} repositories in ${profile.label.toLowerCase()} mode.`,
@@ -462,7 +481,7 @@ export async function collectEngineData(
     [],
     async () => fetchAuthoredIssueResponseHours(client, search.authoredIssues),
   );
-  const reviewComments = (await Promise.all(topRepos.map(async (repo) => {
+  const reviewCommentBatches = await mapConcurrent(topRepos, 4, async (repo) => {
     const comments = await safe(
       unavailable,
       `${repo.full_name}-review-comments`,
@@ -477,11 +496,12 @@ export async function collectEngineData(
         body: comment.body,
         createdAt: comment.created_at,
       }));
-  }))).flat();
+  });
+  const reviewComments = reviewCommentBatches.flat();
 
-  await Promise.all(topRepos.map(async (repo) => {
+  await mapConcurrent(topRepos, 4, async (repo) => {
     security[repo.full_name] = await fetchSecurity(client, repo, unavailable);
-  }));
+  });
 
   emit("phase", "expensive-sampling", "Running bounded fork, stargazer, and per-commit detail sampling; this is the slowest phase.");
   const forks: EngineData["forks"] = {};
@@ -489,17 +509,17 @@ export async function collectEngineData(
     .filter((repo) => !repo.fork && repo.forks_count > 0)
     .sort((a, b) => b.forks_count - a.forks_count)
     .slice(0, profile.forkLimit);
-  await Promise.all(ownReposByForks.map(async (repo) => {
+  await mapConcurrent(ownReposByForks, 4, async (repo) => {
     forks[repo.full_name] = await safe(
       unavailable,
       `${repo.full_name}-forks`,
       [],
       async () => (await fetchForks(client, repo.owner.login, repo.name)).data,
     );
-  }));
+  });
   sampled["fork-activity"] = {
     size: ownReposByForks.length,
-    note: "Fork activity uses the five most-forked owned repositories.",
+    note: `Fork activity uses the ${profile.forkLimit} most-forked owned repositories.`,
   };
 
   const forkComparisons: EngineData["forkComparisons"] = {};
@@ -536,14 +556,14 @@ export async function collectEngineData(
   const stargazers: EngineData["stargazers"] = {};
   const starRepos = ranked.filter((repo) => !repo.fork && repo.stargazers_count > 0).slice(0, profile.starRepositoryLimit);
   if (allowExpensive) {
-    await Promise.all(starRepos.map(async (repo) => {
+    await mapConcurrent(starRepos, 4, async (repo) => {
       stargazers[repo.full_name] = await safe(
         unavailable,
         `${repo.full_name}-stargazers`,
         [],
         async () => (await fetchStargazers(client, repo.owner.login, repo.name)).data,
       );
-    }));
+    });
   } else {
     unavailable["stargazers-phase-c"] = profile.starRepositoryLimit === 0
       ? `${profile.label} mode skips stargazer history.`

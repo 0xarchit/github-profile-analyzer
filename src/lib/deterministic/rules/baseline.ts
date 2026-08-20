@@ -58,7 +58,8 @@ export const rule1_4ContributedForkFilter: BaselineRule = (data) => {
   if (!Object.keys(data.forkComparisons).length && data.repos.some((repo) => repo.fork)) {
     return unavailable("1.4", "Contributed-fork filter", "Fork compare data was unavailable or exhausted the call budget.", "GET /repos/{o}/{r}/compare/{base}...{head}", "expensive");
   }
-  return sampled("1.4", "Contributed-fork filter", kept, `${kept.length} sampled forks contain commits ahead of upstream.`, "GET /repos/{o}/{r}/compare/{base}...{head}", Object.keys(data.forkComparisons).length, "Capped at five fork comparisons.");
+  const forkLimit = data.sampled["fork-activity"]?.size ?? 5;
+  return sampled("1.4", "Contributed-fork filter", kept, `${kept.length} sampled forks contain commits ahead of upstream.`, "GET /repos/{o}/{r}/compare/{base}...{head}", Object.keys(data.forkComparisons).length, `Capped at ${forkLimit} fork comparisons.`);
 };
 
 // Rules 1.5 and 1.6 share a single filter pass over non-fork repos.

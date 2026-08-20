@@ -277,55 +277,84 @@ export class GitHubClient {
 
   async graphql<T>(query: string, variables: Record<string, unknown> = {}, label = "GraphQL batch"): Promise<T> {
     if (this.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const cacheKey = `graphql:${this.tokenFingerprint}:${JSON.stringify({ query, variables })}`;
-    const cached = readEndpointCache<T>(cacheKey);
-    if (cached) {
-      this.cacheStats.hits += 1;
-      this.emit("cache", "cache", `Served ${label} from endpoint cache`, { bucket: "graphql", label });
-      return cached.data;
-    }
-    this.cacheStats.misses += 1;
-    try {
-      this.budget.take("graphql", label);
-    } catch (error) {
-      this.emit("warning", "budget", `Skipped ${label}: GraphQL call budget exhausted.`, {
+    const retries = typeof this.tokenOrProvider === "function" ? 2 : 1;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const cacheKey = `graphql:${this.tokenFingerprint}:${JSON.stringify({ query, variables })}`;
+      const cached = readEndpointCache<T>(cacheKey);
+      if (cached) {
+        this.cacheStats.hits += 1;
+        this.emit("cache", "cache", `Served ${label} from endpoint cache`, { bucket: "graphql", label });
+        return cached.data;
+      }
+      this.cacheStats.misses += 1;
+      try {
+        this.budget.take("graphql", label);
+      } catch (error) {
+        this.emit("warning", "budget", `Skipped ${label}: GraphQL call budget exhausted.`, {
+          bucket: "graphql",
+          label,
+          method: "POST",
+        });
+        throw error;
+      }
+      this.emit("request-start", "graphql", `Calling GRAPHQL ${label}`, {
         bucket: "graphql",
         label,
         method: "POST",
+        attempt: attempt + 1,
       });
-      throw error;
+      const effectiveSignal = combineSignals(15_000, this.signal);
+      const response = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: this.headers({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ query, variables }),
+        signal: effectiveSignal,
+      });
+      this.emit("request-complete", "graphql", `GRAPHQL ${label} returned ${response.status}`, {
+        bucket: "graphql",
+        label,
+        method: "POST",
+        attempt: attempt + 1,
+        statusCode: response.status,
+      });
+
+      if (response.status === 202 || response.status === 403 || response.status === 429) {
+        const remaining = Number(response.headers.get("x-ratelimit-remaining") ?? "1");
+        const retryAfter = Number(response.headers.get("retry-after") ?? "0");
+        const shouldRetry403 = response.status === 403 && (remaining === 0 || retryAfter > 0);
+        const shouldRetry = response.status === 202 || response.status === 429 || shouldRetry403;
+
+        if (attempt < retries && shouldRetry) {
+          if (response.status === 403 || response.status === 429) {
+            this.rotateToken();
+          }
+          const delayMs = Math.max(retryAfter * 1_000, 600 * 2 ** attempt);
+          this.emit("retry", "github-retry", `${label} returned ${response.status}; backing off ${delayMs}ms before retry ${attempt + 1}/${retries}`, {
+            bucket: "graphql",
+            label,
+            method: "POST",
+            attempt: attempt + 1,
+            statusCode: response.status,
+            retryAfterMs: delayMs,
+          });
+          await sleep(delayMs, this.signal);
+          continue;
+        }
+      }
+
+      const body = (await response.json()) as { data?: T; errors?: Array<{ message: string }> };
+      if (!response.ok || !body.data) {
+        throw new GitHubRequestError(
+          body.errors?.map((error) => error.message).join("; ") || `GraphQL request failed (${response.status})`,
+          response.status,
+          "https://api.github.com/graphql",
+          body,
+        );
+      }
+      writeEndpointCache(cacheKey, body.data, response.headers);
+      return body.data;
     }
-    this.emit("request-start", "graphql", `Calling GRAPHQL ${label}`, {
-      bucket: "graphql",
-      label,
-      method: "POST",
-      attempt: 1,
-    });
-    const effectiveSignal = combineSignals(15_000, this.signal);
-    const response = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers: this.headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ query, variables }),
-      signal: effectiveSignal,
-    });
-    this.emit("request-complete", "graphql", `GRAPHQL ${label} returned ${response.status}`, {
-      bucket: "graphql",
-      label,
-      method: "POST",
-      attempt: 1,
-      statusCode: response.status,
-    });
-    const body = await response.json() as { data?: T; errors?: Array<{ message: string }> };
-    if (!response.ok || body.errors?.length || !body.data) {
-      throw new GitHubRequestError(
-        body.errors?.map((error) => error.message).join("; ") || `GraphQL request failed (${response.status})`,
-        response.status,
-        "https://api.github.com/graphql",
-        body,
-      );
-    }
-    writeEndpointCache(cacheKey, body.data, response.headers);
-    return body.data;
+    throw new GitHubRequestError(`GraphQL ${label} failed after retries`, 503, "https://api.github.com/graphql", null);
   }
 }
 
