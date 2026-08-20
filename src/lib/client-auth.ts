@@ -1,8 +1,18 @@
+export interface RateLimitResource {
+  limit: number;
+  remaining: number;
+  reset: number;
+}
+
 export interface AuthIdentity {
   username: string;
   avatarUrl: string | null;
   githubId?: number;
   isGuest: boolean;
+  rateLimit?: {
+    core: RateLimitResource;
+    graphql: RateLimitResource;
+  } | null;
 }
 
 export async function fetchAuthIdentity(
@@ -30,5 +40,6 @@ export async function fetchAuthIdentity(
       : (data.avatarUrl ?? null),
     githubId: data.githubId,
     isGuest: Boolean(data.isGuest),
+    rateLimit: data.rateLimit ?? null,
   };
 }

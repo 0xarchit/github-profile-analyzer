@@ -13,6 +13,7 @@ export default function Home() {
   const [isHovered, setIsHovered] = useState(false);
   const [versionOpen, setVersionOpen] = useState<"hover" | "click" | null>(null);
   const [engineMode, setEngineMode] = useState<"deterministic" | "legacy">("deterministic");
+  const [deterministicMode, setDeterministicMode] = useState<"quick" | "standard" | "deep">("deep");
   const router = useRouter();
 
   useEffect(() => {
@@ -35,7 +36,10 @@ export default function Home() {
       !/[/?#]/.test(clean)
     ) {
       setInputError(null);
-      router.push(`/${encodeURIComponent(clean)}?engine=${engineMode}`);
+      const url = engineMode === "deterministic"
+        ? `/${encodeURIComponent(clean)}?mode=${deterministicMode}`
+        : `/${encodeURIComponent(clean)}?engine=legacy`;
+      router.push(url);
     } else {
       setInputError(
         "IDENTIFIER_INVALID: Target must be a valid GitHub handle.",
@@ -179,6 +183,68 @@ export default function Home() {
               </button>
             </div>
           </div>
+          {engineMode === "deterministic" && user && !user.isGuest && (
+            <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 sm:p-4 bg-white border-4 border-black shadow-neo">
+                <div className="text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] sm:text-xs font-heading uppercase font-black text-black">
+                      Scan Depth Protocol
+                    </span>
+                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 bg-neo-yellow border border-black font-black uppercase">
+                      OAuth Linked
+                    </span>
+                  </div>
+                  <p className="text-[9px] sm:text-[10px] font-bold text-black/60">
+                    Select deterministic rule execution intensity for your run.
+                  </p>
+                </div>
+
+                <div className="inline-flex border-2 border-black bg-neo-bg p-1 gap-1 w-full sm:w-auto">
+                  {(["quick", "standard", "deep"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setDeterministicMode(mode)}
+                      className={`flex-1 sm:flex-none px-3 py-1.5 text-[9px] sm:text-[10px] font-heading font-black uppercase transition-all ${
+                        deterministicMode === mode
+                          ? "bg-black text-white shadow-neo-sm"
+                          : "bg-white text-black hover:bg-neo-yellow"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {user.rateLimit && (
+                <div className="grid grid-cols-2 gap-3 text-left">
+                  <div className="p-3 bg-white border-2 border-black shadow-neo-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-[8px] sm:text-[9px] font-black uppercase text-black/50">Core REST Quota</p>
+                      <p className="text-xs sm:text-sm font-black text-black">
+                        {user.rateLimit.core.remaining.toLocaleString()}{" "}
+                        <span className="text-[9px] font-normal text-black/50">/ {user.rateLimit.core.limit.toLocaleString()}</span>
+                      </p>
+                    </div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-neo-green animate-pulse" />
+                  </div>
+                  <div className="p-3 bg-white border-2 border-black shadow-neo-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-[8px] sm:text-[9px] font-black uppercase text-black/50">GraphQL Quota</p>
+                      <p className="text-xs sm:text-sm font-black text-black">
+                        {user.rateLimit.graphql.remaining.toLocaleString()}{" "}
+                        <span className="text-[9px] font-normal text-black/50">/ {user.rateLimit.graphql.limit.toLocaleString()}</span>
+                      </p>
+                    </div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-neo-blue animate-pulse" />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
             <div className="flex-1 relative group min-w-0">
               <div className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2 z-10 pointer-events-none">
@@ -218,13 +284,13 @@ export default function Home() {
             <div className="flex justify-center items-center gap-6 flex-wrap">
               <button
                 type="button"
-                onClick={() => router.push(`/${user.username}`)}
+                onClick={() => router.push(`/${user.username}${engineMode === "deterministic" ? `?mode=${deterministicMode}` : "?engine=legacy"}`)}
                 className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink hover:border-neo-pink transition-colors tracking-widest group border-b-2 border-black pb-1"
               >
                 <div className="p-1 border-2 border-black group-hover:bg-neo-pink group-hover:border-neo-pink transition-colors">
                   <User className="w-4 h-4" />
                 </div>
-                Analyze Internal Profile
+                Analyze Internal Profile ({deterministicMode.toUpperCase()})
               </button>
               <div className="hidden sm:block w-px h-8 bg-black/10" />
               <div className="text-xs font-black uppercase flex items-center gap-2 opacity-50">
