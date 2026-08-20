@@ -31,17 +31,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch("/api/users/settings")
-      .then((res) => res.json())
-      .then((resData) => {
-        if (resData.error) throw new Error(resData.error);
+      .then(async (res) => {
+        const resData = await res.json();
+        if (!res.ok || resData.error) throw new Error(resData.error || `HTTP ${res.status}`);
         setData(resData);
       })
-      .catch(() => {
-        setError("Unable to load identity protocols.");
-        router.push("/");
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load identity protocols.");
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, []);
 
   const updateSetting = async (payload: Partial<UserSettings>) => {
     if (updating || !data) return;

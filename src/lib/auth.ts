@@ -2,10 +2,11 @@ import { SignJWT, jwtVerify, JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { sendTelegramAlert } from "./telegram-alert";
 
-if (!process.env.JWT_SECRET) {
+const RAW_JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "local_dev_default_jwt_secret_key_32bytes_long" : "");
+if (!RAW_JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
-export const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+export const JWT_SECRET = new TextEncoder().encode(RAW_JWT_SECRET);
 export const SESSION_COOKIE = "gitscore_session";
 
 export interface Session {
@@ -27,17 +28,16 @@ function isExpectedJwtFailure(error: unknown): boolean {
   );
 }
 
-/**
- * Runtime type predicate that validates a JWT payload contains all required
- * Session fields with the correct types. Prevents silent undefined values
- * from propagating when field names change or tokens are malformed.
- */
 function isValidSession(p: JWTPayload): p is JWTPayload & Session {
+  const r = p as Record<string, unknown>;
+  const parsedGithubId = Number(r.githubId);
   return (
-    typeof (p as Record<string, unknown>).githubId === "number" &&
-    typeof (p as Record<string, unknown>).username === "string" &&
-    typeof (p as Record<string, unknown>).accessToken === "string" &&
-    typeof (p as Record<string, unknown>).avatarUrl === "string"
+    !isNaN(parsedGithubId) &&
+    parsedGithubId > 0 &&
+    typeof r.username === "string" &&
+    r.username.trim().length > 0 &&
+    typeof r.accessToken === "string" &&
+    typeof r.avatarUrl === "string"
   );
 }
 
@@ -48,7 +48,11 @@ function isValidSession(p: JWTPayload): p is JWTPayload & Session {
  * @param sessionData The session payload to sign.
  */
 export async function createSession(sessionData: Session) {
-  const token = await new SignJWT({ ...sessionData })
+  const payload: Session = {
+    ...sessionData,
+    githubId: Number(sessionData.githubId),
+  };
+  const token = await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -57,7 +61,7 @@ export async function createSession(sessionData: Session) {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
@@ -75,7 +79,7 @@ export async function createGuestSession(username: string) {
   (await cookies()).set(GUEST_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge: 3600,
   });
@@ -115,10 +119,18 @@ export async function verifySession(token: string): Promise<Session | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     if (!isValidSession(payload)) {
+      console.warn("[AUTH] Session payload failed validation check:", payload);
       return null;
     }
-    return payload;
+    const r = payload as Record<string, unknown>;
+    return {
+      githubId: Number(r.githubId),
+      username: String(r.username),
+      accessToken: String(r.accessToken),
+      avatarUrl: String(r.avatarUrl ?? ""),
+    };
   } catch (error) {
+    console.warn("[AUTH] jwtVerify failed:", error);
     if (!isExpectedJwtFailure(error)) {
       void sendTelegramAlert({
         source: "AUTH_VERIFY_SESSION",

@@ -116,12 +116,15 @@ async function materializeUser(
 ): Promise<User | null> {
   if (!row) return null;
   const r = row as Record<string, unknown>;
-  // Validate required fields to guard against schema drift silently producing
-  // undefined values behind the typed interface.
-  if (typeof r.id !== "number" && typeof r.id !== "bigint") return null;
-  if (typeof r.github_id !== "number" && typeof r.github_id !== "bigint") return null;
+  const parsedId = Number(r.id);
+  const parsedGithubId = Number(r.github_id);
+  if (isNaN(parsedId) || isNaN(parsedGithubId)) return null;
   if (typeof r.username !== "string") return null;
-  const user = row as User;
+  const user = {
+    ...r,
+    id: parsedId,
+    github_id: parsedGithubId,
+  } as User;
   user.settings = normalizeSettings(user.settings);
   if (
     includeAccessToken &&
@@ -136,12 +139,13 @@ async function materializeUser(
 }
 
 export async function getUserByGithubId(
-  githubId: number,
+  githubId: number | string,
 ): Promise<User | null> {
-  console.log("[DB] getUserByGithubId", { githubId });
+  const numericId = Number(githubId);
+  console.log("[DB] getUserByGithubId", { githubId: numericId });
   try {
     const rows =
-      await sql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
+      await sql`SELECT * FROM users WHERE github_id = ${numericId} LIMIT 1`;
     console.log("[DB] getUserByGithubId result", { found: rows.length > 0 });
     return materializeUser(rows[0]);
   } catch (err) {

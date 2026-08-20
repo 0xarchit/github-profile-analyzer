@@ -11,11 +11,45 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export async function GET(request: Request) {
+  const isDev = process.env.NODE_ENV === "development" || process.env.ENV === "dev" || process.env.NEXT_PUBLIC_ENV === "dev";
+  const { searchParams } = new URL(request.url);
+  const devLogin = searchParams.get("dev_login") === "true";
+  const devUsername = searchParams.get("username") || "local-dev";
+
+  if (isDev && devLogin) {
+    const devGithubId = 99999999;
+    try {
+      const user = await upsertUser({
+        github_id: devGithubId,
+        username: devUsername,
+        avatar_url: `https://github.com/${devUsername}.png`,
+        access_token: "dev_mock_token",
+      });
+      await createSession({
+        githubId: user.github_id,
+        username: user.username,
+        accessToken: user.access_token,
+        avatarUrl: user.avatar_url || "",
+      });
+    } catch {
+      // If DB is offline in local dev, create session directly
+      await createSession({
+        githubId: devGithubId,
+        username: devUsername,
+        accessToken: "dev_mock_token",
+        avatarUrl: `https://github.com/${devUsername}.png`,
+      });
+    }
+    return NextResponse.redirect(APP_URL);
+  }
+
   if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    if (isDev) {
+      return NextResponse.redirect(`${APP_URL}/api/auth/github/callback?dev_login=true&username=${encodeURIComponent(devUsername)}`);
+    }
     return NextResponse.redirect(`${APP_URL}/?error=missing_oauth_config`);
   }
 
-  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 

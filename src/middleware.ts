@@ -4,10 +4,11 @@ import { jwtVerify } from "jose";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 
-if (!process.env.JWT_SECRET) {
+const RAW_JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== "production" ? "local_dev_default_jwt_secret_key_32bytes_long" : "");
+if (!RAW_JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+const JWT_SECRET = new TextEncoder().encode(RAW_JWT_SECRET);
 const SESSION_COOKIE = "gitscore_session";
 const UPSTASH_URL = (process.env.UPSTASH_URL || "").trim();
 const UPSTASH_TOKEN = (process.env.UPSTASH_TOKEN || "").trim();
