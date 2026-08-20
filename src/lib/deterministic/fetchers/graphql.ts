@@ -65,7 +65,7 @@ interface MainResponse {
     sponsoring: { totalCount: number };
     sponsors: { totalCount: number };
     repositoriesContributedTo: { totalCount: number };
-    pullRequests: { nodes: GraphQLSummary["pullRequests"] };
+    pullRequests: { nodes: Array<GraphQLSummary["pullRequests"][number] | null> };
     contributionsCollection: {
       totalPullRequestReviewContributions: number;
       totalPullRequestContributions: number;
@@ -74,7 +74,7 @@ interface MainResponse {
       contributionYears: number[];
       contributionCalendar: { totalContributions: number; weeks: Array<{ contributionDays: GraphQLSummary["calendar"] }> };
       commitContributionsByRepository: Array<{ repository: { nameWithOwner: string }; contributions: { totalCount: number } }>;
-      pullRequestReviewContributions: { nodes: Array<{ occurredAt: string; pullRequest: { title: string } }> };
+      pullRequestReviewContributions: { nodes: Array<{ occurredAt: string; pullRequest: { title: string } | null } | null> };
     };
   };
   rateLimit: { cost: number; remaining: number; resetAt: string };
@@ -108,8 +108,10 @@ export async function fetchGraphQLSummary(client: GitHubClient, username: string
     sponsoringCount: response.user.sponsoring.totalCount,
     sponsorCount: response.user.sponsors.totalCount,
     repositoriesContributedToCount: response.user.repositoriesContributedTo.totalCount,
-    pullRequests: response.user.pullRequests.nodes,
-    reviews: collection.pullRequestReviewContributions.nodes.map((node) => ({ occurredAt: node.occurredAt, title: node.pullRequest.title })),
+    pullRequests: response.user.pullRequests.nodes.filter((node): node is NonNullable<typeof node> => Boolean(node)),
+    reviews: collection.pullRequestReviewContributions.nodes
+      .filter((node): node is { occurredAt: string; pullRequest: { title: string } } => node !== null && node !== undefined && node.pullRequest !== null && node.pullRequest !== undefined)
+      .map((node) => ({ occurredAt: node.occurredAt, title: node.pullRequest.title })),
     graphqlCost: response.rateLimit.cost,
     graphqlRemaining: response.rateLimit.remaining,
   };
