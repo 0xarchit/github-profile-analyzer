@@ -3,12 +3,7 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
-
-if (!process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET environment variable is required");
-}
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
-const SESSION_COOKIE = "gitscore_session";
+import { JWT_SECRET, SESSION_COOKIE } from "@/lib/auth";
 const UPSTASH_URL = (process.env.UPSTASH_URL || "").trim();
 const UPSTASH_TOKEN = (process.env.UPSTASH_TOKEN || "").trim();
 const isRatelimitConfigured = Boolean(UPSTASH_URL && UPSTASH_TOKEN);

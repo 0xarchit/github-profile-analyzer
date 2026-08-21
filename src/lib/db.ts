@@ -65,6 +65,20 @@ export interface Scan {
   created_at: string;
 }
 
+export interface DeterministicScan {
+  id: string;
+  user_id: number;
+  username: string;
+  mode: string;
+  overall_score: number;
+  letter_grade: string | null;
+  archetype: string | null;
+  data: unknown;
+  api_calls_used: number;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 function normalizeSettings(
   settings: Partial<UserSettings> | null | undefined,
 ): UserSettings {
@@ -102,12 +116,15 @@ async function materializeUser(
 ): Promise<User | null> {
   if (!row) return null;
   const r = row as Record<string, unknown>;
-  // Validate required fields to guard against schema drift silently producing
-  // undefined values behind the typed interface.
-  if (typeof r.id !== "number" && typeof r.id !== "bigint") return null;
-  if (typeof r.github_id !== "number" && typeof r.github_id !== "bigint") return null;
+  const parsedId = Number(r.id);
+  const parsedGithubId = Number(r.github_id);
+  if (isNaN(parsedId) || isNaN(parsedGithubId)) return null;
   if (typeof r.username !== "string") return null;
-  const user = row as User;
+  const user = {
+    ...r,
+    id: parsedId,
+    github_id: parsedGithubId,
+  } as User;
   user.settings = normalizeSettings(user.settings);
   if (
     includeAccessToken &&
@@ -122,12 +139,13 @@ async function materializeUser(
 }
 
 export async function getUserByGithubId(
-  githubId: number,
+  githubId: number | string,
 ): Promise<User | null> {
-  console.log("[DB] getUserByGithubId", { githubId });
+  const numericId = Number(githubId);
+  console.log("[DB] getUserByGithubId", { githubId: numericId });
   try {
     const rows =
-      await sql`SELECT * FROM users WHERE github_id = ${githubId} LIMIT 1`;
+      await sql`SELECT * FROM users WHERE github_id = ${numericId} LIMIT 1`;
     console.log("[DB] getUserByGithubId result", { found: rows.length > 0 });
     return materializeUser(rows[0]);
   } catch (err) {
@@ -224,6 +242,11 @@ export async function updateUserSettings(
     const scanRows = await sql`
       SELECT 1
       FROM scans
+      WHERE id = ${safeSettings.primary_scan_id}
+        AND user_id = ${userId}
+      UNION ALL
+      SELECT 1
+      FROM deterministic_scans
       WHERE id = ${safeSettings.primary_scan_id}
         AND user_id = ${userId}
       LIMIT 1
@@ -448,4 +471,131 @@ export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
     last_updated: new Date().toISOString(),
   };
 }
+
+function mapDeterministicScanRow(r: Record<string, unknown>): DeterministicScan {
+  return {
+    id: String(r.id),
+    user_id: Number(r.user_id),
+    username: String(r.username),
+    mode: String(r.mode),
+    overall_score: Number(r.overall_score),
+    letter_grade: r.letter_grade ? String(r.letter_grade) : null,
+    archetype: r.archetype ? String(r.archetype) : null,
+    data: typeof r.data === "string" ? JSON.parse(r.data) : r.data,
+    duration_ms: r.duration_ms !== null && r.duration_ms !== undefined ? Number(r.duration_ms) : null,
+    api_calls_used: Number(r.api_calls_used || 0),
+    created_at: String(r.created_at),
+  };
+}
+
+/**
+ * Persists a deterministic engine analysis result to the deterministic_scans table
+ * and maintains at most 10 rows per user.
+ */
+export async function saveDeterministicScan(
+  userId: number,
+  username: string,
+  mode: string,
+  data: unknown,
+  overallScore: number,
+  letterGrade?: string | null,
+  archetype?: string | null,
+  durationMs?: number,
+  apiCallsUsed?: number,
+): Promise<DeterministicScan | null> {
+  try {
+    const roundedOverallScore = Math.round(overallScore);
+    const rows = await sql`
+      WITH inserted AS (
+        INSERT INTO deterministic_scans (
+          user_id, username, mode, overall_score, letter_grade, archetype, data, duration_ms, api_calls_used
+        )
+        VALUES (
+          ${userId}, ${username.trim()}, ${mode}, ${roundedOverallScore},
+          ${letterGrade ?? null}, ${archetype ?? null}, ${JSON.stringify(data)},
+          ${durationMs ?? null}, ${apiCallsUsed ?? 0}
+        )
+        RETURNING *
+      ),
+      ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY user_id
+                 ORDER BY created_at DESC, id DESC
+               ) AS row_num
+        FROM deterministic_scans
+        WHERE user_id = ${userId}
+      ),
+      deleted AS (
+        DELETE FROM deterministic_scans
+        WHERE id IN (SELECT id FROM ranked WHERE row_num > 10)
+        RETURNING id
+      )
+      SELECT * FROM inserted
+    `;
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
+  } catch (err) {
+    console.error("[DB] saveDeterministicScan failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieves the latest deterministic scan for a user and username, optionally filtered by mode.
+ */
+export async function getLatestDeterministicScan(
+  userId: number,
+  username: string,
+  mode?: string,
+): Promise<DeterministicScan | null> {
+  try {
+    const rows = await sql`
+      SELECT * FROM deterministic_scans
+      WHERE user_id = ${userId} AND LOWER(username) = ${username.toLowerCase()}
+        AND (${mode ?? null}::text IS NULL OR mode = ${mode ?? null})
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
+  } catch (err) {
+    console.error("[DB] getLatestDeterministicScan failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieves a deterministic scan by UUID id.
+ */
+export async function getDeterministicScanById(
+  id: string,
+): Promise<DeterministicScan | null> {
+  try {
+    const rows = await sql`SELECT * FROM deterministic_scans WHERE id = ${id} LIMIT 1`;
+    return rows[0] ? mapDeterministicScanRow(rows[0] as Record<string, unknown>) : null;
+  } catch (err) {
+    console.error("[DB] getDeterministicScanById failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieves up to 10 recent deterministic scans for a given user.
+ */
+export async function getUserDeterministicScans(
+  userId: number,
+): Promise<DeterministicScan[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM deterministic_scans
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+    return rows.map((r) => mapDeterministicScanRow(r as Record<string, unknown>));
+  } catch (err) {
+    console.error("[DB] getUserDeterministicScans failed:", err);
+    return [];
+  }
+}
+
 

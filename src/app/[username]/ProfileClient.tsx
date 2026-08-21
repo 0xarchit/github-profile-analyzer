@@ -33,9 +33,10 @@ const StatsDashboard = dynamic(
 interface ProfileClientProps {
   username: string;
   initialData?: AnalysisResult;
+  engineMode?: "deterministic" | "legacy";
 }
 
-export function ProfileClient({ username, initialData }: ProfileClientProps) {
+export function ProfileClient({ username, initialData, engineMode = "legacy" }: ProfileClientProps) {
   const router = useRouter();
   const [data, setData] = useState<AnalysisResult | null>(initialData || null);
   const [error, setError] = useState<string | null>(null);
@@ -96,22 +97,25 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
           } catch {}
         });
 
-        eventSource.addEventListener("error", (e) => {
+        const handleErrorEvent = (e: Event) => {
           try {
             const payload = JSON.parse((e as MessageEvent).data || "{}");
             if (payload.error === "Star required") {
               setShowStarModal(true);
             } else {
-              setError(payload.error || "Diagnostic matrix failed");
+              setError(payload.message || payload.error || "Analysis failed");
             }
           } catch {
             setError("DIAGNOSTIC_FAILURE");
           } finally {
             eventSource.close();
           }
-        });
+        };
+
+        eventSource.addEventListener("analysis-error", handleErrorEvent);
 
         eventSource.onerror = () => {
+          setError("NETWORK_FAILURE");
           eventSource.close();
         };
       } catch {
@@ -301,6 +305,10 @@ export function ProfileClient({ username, initialData }: ProfileClientProps) {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-6 border-b-6 md:border-b-8 border-black pb-6 md:pb-8 relative overflow-x-hidden animate-in fade-in slide-in-from-bottom-4">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div className="bg-black text-white px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase shadow-neo flex items-center gap-1">
+            {engineMode === "deterministic" ? "DETERMINISTIC" : "LEGACY AI"}
+            <span className="text-[8px] px-1 py-0.5 bg-neo-pink text-white border border-black">BETA</span>
+          </div>
           <div className="bg-neo-green text-black px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase shadow-neo">
             Identity Verified
           </div>

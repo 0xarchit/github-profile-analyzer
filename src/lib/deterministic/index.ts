@@ -1,0 +1,33 @@
+export { analyzeGitHubProfile, getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "./engine";
+export { UserNotFoundError, TokenUnavailableError, GitHubRequestError, BudgetExceededError } from "./fetchers/client";
+export type { AnalyzeOptions } from "./engine";
+export type {
+  EngineResult,
+  StoredEngineResult,
+  EngineMeta,
+  EngineData,
+  AnalysisMode,
+  AnalysisModeProfile,
+  AnalysisProgressEvent,
+  AnalysisProgressCallback,
+  BudgetSnapshot,
+  ScoresOutput,
+  RuleResult,
+  SignalResult,
+  ChartResult,
+  ChartKind,
+  LetterGrade,
+  InterpretationOutput,
+  InterpretationGrade,
+  InterpretationArchetype,
+  InterpretationWorkRhythm,
+  InterpretationWorkStyleAxis,
+  InterpretationPortfolio,
+  InterpretationMomentum,
+  InterpretationTag,
+  InterpretationRoleProfile,
+  InterpretationQualityProfile,
+  InterpretationEvidenceTrace,
+  InterpretationDataQuality,
+  InterpretationConfidence,
+} from "./types";
