@@ -13,6 +13,7 @@ export type {
   BudgetSnapshot,
   ScoresOutput,
   RuleResult,
+  ScoreFactor,
   SignalResult,
   ChartResult,
   ChartKind,

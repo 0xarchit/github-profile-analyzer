@@ -10,51 +10,33 @@ import { getCachedData, setCachedData } from "@/lib/redis";
 import { GITHUB_USERNAME_REGEX } from "@/lib/validation";
 import type { AnalysisMode, AnalysisModeProfile, AnalysisProgressCallback, AnalysisProgressEvent, BudgetSnapshot, EngineResult, RuleResult } from "./types";
 
+export const DEEP_DIVE_PROFILE: AnalysisModeProfile = {
+  id: "deep",
+  label: "Deep dive",
+  description: "Single full-depth deterministic pass built on batched GraphQL; ~12 API calls per run.",
+  expectedCalls: { minimum: 10, maximum: 16 },
+  budget: { rest: 12, graphql: 9, search: 2 },
+  repositoryLimit: 8,
+  forkLimit: 3,
+  commitDetailLimit: 100,
+};
+
 export const ANALYSIS_MODE_PROFILES: Record<AnalysisMode, AnalysisModeProfile> = {
-  quick: {
-    id: "quick",
-    label: "Quick",
-    description: "Fast public snapshot with two enriched repositories and batched GraphQL.",
-    expectedCalls: { minimum: 8, maximum: 18 },
-    budget: { rest: 20, graphql: 4, search: 4 },
-    repositoryLimit: 2,
-    forkLimit: 0,
-    starRepositoryLimit: 0,
-    commitDetailLimit: 0,
-  },
-  standard: {
-    id: "standard",
-    label: "Standard",
-    description: "Balanced dashboard run with four enriched repositories and batched GraphQL.",
-    expectedCalls: { minimum: 15, maximum: 30 },
-    budget: { rest: 30, graphql: 4, search: 4 },
-    repositoryLimit: 4,
-    forkLimit: 1,
-    starRepositoryLimit: 2,
-    commitDetailLimit: 30,
-  },
-  deep: {
-    id: "deep",
-    label: "Deep",
-    description: "Full deterministic pass with top-6 repositories, batched GraphQL, and statistical sampling.",
-    expectedCalls: { minimum: 25, maximum: 44 },
-    budget: { rest: 42, graphql: 6, search: 4 },
-    repositoryLimit: 6,
-    forkLimit: 2,
-    starRepositoryLimit: 2,
-    commitDetailLimit: 60,
-  },
+  deep: DEEP_DIVE_PROFILE,
 };
 
 const CACHE_TTL_SECONDS = 15 * 60; // 15 minutes Redis cache
 
-const emptyBudget = (profile: AnalysisModeProfile = ANALYSIS_MODE_PROFILES.deep): BudgetSnapshot => ({
+const emptyBudget = (profile: AnalysisModeProfile = DEEP_DIVE_PROFILE): BudgetSnapshot => ({
   rest: { used: 0, limit: profile.budget.rest, remaining: profile.budget.rest },
   graphql: { used: 0, limit: profile.budget.graphql, remaining: profile.budget.graphql },
   search: { used: 0, limit: profile.budget.search, remaining: profile.budget.search },
 });
 
-export const getAnalysisModeProfile = (mode: AnalysisMode = "deep") => ANALYSIS_MODE_PROFILES[mode] ?? ANALYSIS_MODE_PROFILES.deep;
+export function getAnalysisModeProfile(mode?: AnalysisMode) {
+  void mode;
+  return DEEP_DIVE_PROFILE;
+}
 
 export interface AnalyzeOptions {
   bypassCache?: boolean;
@@ -221,8 +203,7 @@ export async function analyzeGitHubProfile(input: string, options: AnalyzeOption
       dataWindows: {
         contributionCalendar: "One year ending at analysis time; public-visible contributions only.",
         events: "Last 30 days, maximum 300 public events.",
-        stats: "52 weeks for documented stats endpoints; punch-card exact window is undocumented and labeled approximately one year.",
-        stargazers: "All-time endpoint, sampled to top three repositories and first 100 stargazers each.",
+        stats: "Weekly activity, punch card, participation, contributors, and code churn are derived from the most recent 100 default-branch commits per sampled repository.",
         commits: "Default-branch history, at most 100 authored commits per sampled repository.",
         traffic: "Requires user OAuth and repository write access; unavailable in this token-pool engine.",
         snapshots: "In-memory for the current server process only; GitHub does not expose historical follower or organization membership data.",

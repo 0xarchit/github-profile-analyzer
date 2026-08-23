@@ -1,6 +1,6 @@
 export type RuleStatus = "ok" | "sampled" | "unavailable" | "skipped" | "requires_oauth";
 export type CostTier = "cheap" | "moderate" | "expensive" | "oauth";
-export type AnalysisMode = "quick" | "standard" | "deep";
+export type AnalysisMode = "deep";
 
 export interface AnalysisModeProfile {
   id: AnalysisMode;
@@ -10,7 +10,6 @@ export interface AnalysisModeProfile {
   budget: { rest: number; graphql: number; search: number };
   repositoryLimit: number;
   forkLimit: number;
-  starRepositoryLimit: number;
   commitDetailLimit: number;
 }
 
@@ -30,6 +29,13 @@ export type ChartKind =
   | "gantt"
   | "matrix";
 
+export interface ScoreFactor {
+  label: string;
+  detail: string;
+  earned: number;
+  max: number;
+}
+
 export interface RuleResult<T = unknown> {
   id: string;
   name: string;
@@ -42,6 +48,8 @@ export interface RuleResult<T = unknown> {
   caveat?: string;
   confidence?: number;
   details?: Record<string, unknown>;
+  factors?: ScoreFactor[];
+  remediation?: string;
   freshness?: {
     score: number;
     label: "live" | "recent" | "historical" | "snapshot" | "unavailable";
@@ -141,6 +149,7 @@ export interface PullRequestNode {
 export interface GraphQLSummary {
   totalContributions: number;
   restrictedContributionsCount: number;
+  totalCommitContributions: number;
   totalPullRequestReviewContributions: number;
   totalPullRequestContributions: number;
   totalIssueContributions: number;
@@ -166,6 +175,7 @@ export interface SearchSummary {
   issuesOpened: number;
   issuesClosed: number;
   reviews: number;
+  discussionsAuthored: number;
   authoredIssues: Array<{ repository: string; number: number; createdAt: string }>;
   caps: string[];
 }
@@ -176,6 +186,12 @@ export interface RepoQuality {
   licensePresent: boolean;
   testsPresent: boolean;
   ciPresent: boolean;
+  contributingPresent: boolean;
+  codeOfConductPresent: boolean;
+  securityPolicyPresent: boolean;
+  fundingPresent: boolean;
+  issueTemplatesPresent: boolean;
+  docsDirectoryPresent: boolean;
 }
 
 export interface RepoIssueSummary {
@@ -199,11 +215,7 @@ export interface SecuritySummary {
   codeScanningEnabled: boolean;
   dependabotEnabled: boolean;
   checks: Array<{ conclusion: string | null; status: string }>;
-}
-
-export interface StargazerEvent {
-  starred_at: string;
-  user: { login: string };
+  dependencyManifests?: Record<string, number>;
 }
 
 export interface GitHubEvent {
@@ -228,7 +240,6 @@ export interface EngineData {
   subscriptions: Array<{ full_name: string }>;
   followers: string[];
   following: string[];
-  userStarred: Array<{ starred_at: string; repo: GitHubRepo }>;
   profileReadme: { present: boolean; bytes: number; text: string };
   languages: Record<string, Record<string, number>>;
   releases: Record<string, ReleaseInfo[]>;
@@ -244,7 +255,6 @@ export interface EngineData {
   issues: Record<string, RepoIssueSummary>;
   security: Record<string, SecuritySummary>;
   forks: Record<string, GitHubRepo[]>;
-  stargazers: Record<string, StargazerEvent[]>;
   forkComparisons: Record<string, { ahead_by: number; behind_by: number; total_commits: number; prCount: number }>;
   authoredIssueResponseHours: number[];
   reviewComments: Array<{ repository: string; pullRequestNumber: number; body: string; createdAt: string }>;

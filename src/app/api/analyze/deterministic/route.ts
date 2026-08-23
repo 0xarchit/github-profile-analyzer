@@ -21,7 +21,6 @@ export const runtime = "edge";
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const usernameParam = searchParams.get("username");
-  const modeParam = searchParams.get("mode") as AnalysisMode | null;
   const force = searchParams.get("force") === "true";
 
   const parsed = UsernameSchema.safeParse(usernameParam);
@@ -100,18 +99,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── 3. Tiered Mode Enforcement (Derived before lookup & live analysis) ──
-    let effectiveMode: AnalysisMode = "quick";
-    if (!isAuthenticated) {
-      effectiveMode = "quick";
-    } else if (isOwnerOfTarget) {
-      const validModes: AnalysisMode[] = ["quick", "standard", "deep"];
-      effectiveMode = validModes.includes(modeParam as AnalysisMode)
-        ? (modeParam as AnalysisMode)
-        : "deep";
-    } else {
-      effectiveMode = modeParam === "deep" || modeParam === "standard" ? "standard" : "quick";
-    }
+    // ── 3. Single Deep-Dive Mode (all callers get the full-depth pass) ──
+    const effectiveMode: AnalysisMode = "deep";
 
     // ── 4. Locked Profile Snapshot Access ──────────────────────────────────
     if (targetUser) {

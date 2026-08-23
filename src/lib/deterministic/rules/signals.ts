@@ -8,7 +8,6 @@ import {
   mean,
   median,
   ok,
-  oauthOnly,
   ratio,
   round,
   sampled,
@@ -424,8 +423,12 @@ export const rule3_36ContributionConcentration: SignalRule = (data) => {
   return signal(ok("3.36", "Contribution concentration", value, `${round(value.ratio * 100, 1)}% of repository commit contributions are in the top repository.`, "GraphQL commitContributionsByRepository"), total >= 20 && value.ratio > 0.9);
 };
 
-export const rule3_37RestrictedContributionRatio: SignalRule = () =>
-  signal(oauthOnly("3.37", "Restricted contribution ratio", "GraphQL restrictedContributionsCount"), false);
+export const rule3_37RestrictedContributionRatio: SignalRule = (data) => {
+  const total = data.graphql.totalContributions;
+  const restricted = data.graphql.restrictedContributionsCount;
+  const value = { restricted, total, ratio: round(ratio(restricted, Math.max(total, 1)), 4) };
+  return sampledSignal("3.37", "Restricted contribution ratio", value, `${restricted} of ${total} contributions are private/restricted and only visible to the authenticated account.`, "GraphQL restrictedContributionsCount", false, total, "Counts include private contributions visible to the token; public viewers may see fewer.");
+};
 
 export const rule3_38MirrorRepos: SignalRule = (data) => {
   const repositories = data.repos.filter((repo) => repo.mirror_url).map((repo) => ({ repository: repo.full_name, mirrorUrl: repo.mirror_url }));
@@ -437,8 +440,10 @@ export const rule3_39OpenSourceCitizenship: SignalRule = (data) => {
   return signal(ok("3.39", "Open-source citizenship", { sampledExternalIssues: external.length, totalAuthoredIssues: data.search.issuesOpened, recentSampleShare: round(ratio(external.length, data.search.authoredIssues.length), 4) }, `${external.length} third-party issue reports appear in the first 100 authored-issue results.`, "GET /search/issues"), external.length > 0);
 };
 
-export const rule3_40DiscussionParticipation: SignalRule = () =>
-  signal(unavailable("3.40", "Discussions participation", "The researched user.repositoryDiscussionComments and ContributionsCollection discussion-comment count fields are not present in the live GitHub GraphQL schema. Repository-scoped discussion comments would require a separate, bounded crawl that cannot provide the claimed user-wide total.", "GitHub GraphQL live schema", "moderate"), false);
+export const rule3_40DiscussionParticipation: SignalRule = (data) => {
+  const discussions = data.search.discussionsAuthored;
+  return signal(ok("3.40", "Discussions participation", { authoredDiscussions: discussions }, `${discussions} authored GitHub Discussions found via the search index.`, "GraphQL search (type: DISCUSSION)"), false);
+};
 
 export const signalRules: SignalRule[] = [
   rule3_1CommitHourEntropy,

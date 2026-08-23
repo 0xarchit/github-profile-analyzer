@@ -3,6 +3,7 @@
 import type { EngineResult } from "@/lib/deterministic";
 import { ScoreRadar } from "../charts";
 import { gradeColor } from "../helpers";
+import { FactorTooltip } from "../widgets";
 
 export function ScoresTab({ data }: { data: EngineResult }) {
   const { scores: sc, interpretation: ip } = data;
@@ -18,7 +19,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
             const weight = sc.weights[r.id] ?? 0;
             const weighted = (r.value as number) * weight * sc.authenticityMultiplier;
             return (
-              <div key={r.id} className="flex items-center gap-3">
+              <div key={r.id} className="relative group flex items-center gap-3">
                 <span className="text-[10px] text-cyan-700 w-8 shrink-0 font-heading">{r.id}</span>
                 <span className="text-[10px] text-gray-600 w-28 truncate shrink-0">{r.name.replace(/ score$/i, "")}</span>
                 <div className="flex-1 h-2 rounded-full" style={{ background: "#e8e6d8" }}>
@@ -27,6 +28,7 @@ export function ScoresTab({ data }: { data: EngineResult }) {
                 <span className="text-[10px] text-black w-8 text-right shrink-0">{(r.value as number).toFixed(1)}</span>
                 <span className="text-[9px] text-gray-400 w-10 text-right shrink-0">{(weight * 100).toFixed(0)}%</span>
                 <span className="text-[9px] text-yellow-600 w-10 text-right shrink-0">{weighted.toFixed(1)}</span>
+                <FactorTooltip rule={r} />
               </div>
             );
           })}

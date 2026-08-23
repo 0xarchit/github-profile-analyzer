@@ -1,12 +1,56 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight } from "lucide-react";
-import type { InterpretationGrade, SignalResult, ChartResult } from "@/lib/deterministic";
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, HelpCircle, Wrench } from "lucide-react";
+import type { InterpretationGrade, RuleResult, ScoreFactor, SignalResult, ChartResult } from "@/lib/deterministic";
 import { gradeColor } from "./helpers";
 
-export function ScoreCard({ label, value, weight, grade }: { label: string; value: number; weight: number; grade?: string }) {
+function FactorBar({ item }: { item: ScoreFactor }) {
+  const pct = item.max > 0 ? Math.min(100, Math.max(0, (item.earned / item.max) * 100)) : 0;
+  const color = pct >= 80 ? "#15803d" : pct >= 50 ? "#ca8a04" : "#e11d48";
   return (
-    <div className="rounded-xl p-3" style={{ background: "#e8e6d8", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }}>
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-heading text-black truncate">{item.label}</span>
+        <span className="text-[9px] text-gray-500 shrink-0">{Math.round(item.earned)}/{item.max}</span>
+      </div>
+      <div className="h-1 rounded-full" style={{ background: "rgba(0,0,0,0.1)" }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <div className="text-[8px] text-gray-500">{item.detail}</div>
+    </div>
+  );
+}
+
+export function FactorTooltip({ rule }: { rule: RuleResult }) {
+  const hasFactors = Boolean(rule.factors?.length);
+  return (
+    <div className="hidden group-hover:block focus-within:block absolute z-50 top-full left-0 mt-2 w-72 p-3 space-y-2 rounded-lg text-left" style={{ background: "#fffef5", border: "3px solid black", boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)" }} role="tooltip">
+      <div className="flex items-center gap-1.5">
+        <HelpCircle className="w-3 h-3 text-cyan-700 shrink-0" />
+        <span className="text-[9px] font-heading uppercase text-gray-500">Why this score</span>
+      </div>
+      <p className="text-[9px] text-gray-600">{rule.description}</p>
+      {hasFactors && (
+        <div className="space-y-1.5 pt-1">
+          {rule.factors!.map((item) => <FactorBar key={item.label} item={item} />)}
+        </div>
+      )}
+      {!hasFactors && (
+        <p className="text-[9px] text-gray-400 italic">No per-factor breakdown for this metric; see details on the Signals tab.</p>
+      )}
+      {rule.remediation && (
+        <div className="flex items-start gap-1.5 pt-1" style={{ borderTop: "2px solid black" }}>
+          <Wrench className="w-3 h-3 text-yellow-600 shrink-0 mt-0.5" />
+          <p className="text-[9px] text-yellow-700 font-semibold">How to improve: {rule.remediation}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ScoreCard({ label, value, weight, grade, rule }: { label: string; value: number; weight: number; grade?: string; rule?: RuleResult }) {
+  return (
+    <div className="relative group rounded-xl p-3" style={{ background: "#e8e6d8", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }} tabIndex={0} aria-label={`${label}: ${typeof value === "number" ? value.toFixed(1) : value}. Hover or focus for breakdown.`}>
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] font-heading uppercase text-gray-500 truncate">{label}</span>
         {grade && <span className="text-[10px] font-heading" style={{ color: gradeColor(grade) }}>{grade}</span>}
@@ -18,6 +62,7 @@ export function ScoreCard({ label, value, weight, grade }: { label: string; valu
         </div>
         <span className="text-[9px] text-gray-400">{(weight * 100).toFixed(0)}%</span>
       </div>
+      {rule && <FactorTooltip rule={rule} />}
     </div>
   );
 }
@@ -32,7 +77,18 @@ export function GradeRow({ grade }: { grade: InterpretationGrade }) {
   );
 }
 
+function formatValuePreview(value: unknown): Array<{ key: string; value: string }> {
+  if (value === null || typeof value !== "object") return [];
+  return Object.entries(value as Record<string, unknown>)
+    .slice(0, 12)
+    .map(([key, entry]) => ({
+      key,
+      value: typeof entry === "object" && entry !== null ? `{${Array.isArray(entry) ? `${entry.length} items` : Object.keys(entry).length > 0 ? "object" : ""}}` : String(entry),
+    }));
+}
+
 export function SignalRow({ signal, expanded, onToggle, flagged }: { signal: SignalResult; expanded: boolean; onToggle: () => void; flagged: boolean }) {
+  const preview = expanded ? formatValuePreview(signal.value) : [];
   return (
     <div className="rounded-lg overflow-hidden" style={{ background: flagged ? "#fff1f2" : "white", border: flagged ? "2px solid #e11d48" : "2px solid black" }}>
       <button
@@ -54,14 +110,32 @@ export function SignalRow({ signal, expanded, onToggle, flagged }: { signal: Sig
       {expanded && (
         <div className="px-3 pb-3 space-y-2 text-[10px]">
           <p className="text-gray-500">{signal.description}</p>
-          <div className="flex gap-4 text-gray-400">
+          {signal.remediation && (
+            <p className="text-yellow-700 font-semibold flex items-start gap-1.5">
+              <Wrench className="w-3 h-3 shrink-0 mt-0.5" /> How to address: {signal.remediation}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-400">
             <span>Source: {signal.source}</span>
             <span>Cost: {signal.cost}</span>
             {signal.sampleSize !== undefined && <span>Sample: {signal.sampleSize}</span>}
             {signal.caveat && <span>Caveat: {signal.caveat}</span>}
           </div>
+          {preview.length > 0 && (
+            <div className="rounded p-2 space-y-0.5" style={{ background: "#f8f7f0", border: "1px solid rgba(0,0,0,0.15)" }}>
+              {preview.map((row) => (
+                <div key={row.key} className="flex gap-2">
+                  <span className="text-gray-500 font-heading w-36 shrink-0 truncate">{row.key}</span>
+                  <span className="text-black break-all">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {signal.value !== null && typeof signal.value === "object" && (
-            <pre className="text-[9px] text-gray-400 overflow-x-auto max-h-32 overflow-y-auto bg-gray-100 p-2 rounded">{JSON.stringify(signal.value, null, 2)}</pre>
+            <details>
+              <summary className="text-[9px] text-gray-400 cursor-pointer select-none">Raw data</summary>
+              <pre className="text-[9px] text-gray-400 overflow-x-auto max-h-32 overflow-y-auto bg-gray-100 p-2 rounded">{JSON.stringify(signal.value, null, 2)}</pre>
+            </details>
           )}
         </div>
       )}
