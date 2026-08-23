@@ -4,7 +4,7 @@
 
 # GitHub Profile Analyzer
 
-A privacy-first, deterministic GitHub profile analyzer that scores developer profiles across 14 weighted categories, detects authenticity anomalies, and produces fully explainable reports. No black boxes: every score shows exactly which factors earned or lost points, and every claim links back to real GitHub data.
+A deterministic GitHub profile analyzer that scores developer profiles across 14 weighted categories, detects authenticity anomalies, and produces fully explainable reports. No black boxes: every score shows exactly which factors earned or lost points, and every claim links back to real GitHub data.
 
 <p align="center">
   <a href="https://github.0xarchit.is-a.dev/"><strong>Try it live</strong></a>
@@ -77,7 +77,7 @@ All results stream to the dashboard over Server-Sent Events so you can watch eac
 
 ### Prerequisites
 
-- Node.js 20+ or Bun
+- Node.js 20+ (npm)
 - A GitHub OAuth application (client id and secret)
 - GitHub personal access tokens for the analysis pool
 - Neon PostgreSQL database
@@ -88,7 +88,7 @@ All results stream to the dashboard over Server-Sent Events so you can watch eac
 ```bash
 git clone https://github.com/0xarchit/github-profile-analyzer.git
 cd github-profile-analyzer
-bun install
+npm install
 ```
 
 ### Environment Variables
@@ -109,7 +109,7 @@ Create a `.env.local` file:
 ### Development
 
 ```bash
-bun run dev
+npm run dev
 ```
 
 Server runs on http://localhost:3000
@@ -117,14 +117,14 @@ Server runs on http://localhost:3000
 ### Testing
 
 ```bash
-bun run test
+npm run test
 ```
 
 ### Production Build
 
 ```bash
-bun run build
-bun run start
+npm run build
+npm run start
 ```
 
 ## API Routes
@@ -169,17 +169,26 @@ If this project helped you, here are two ways to give back:
 [![Star the repo](https://img.shields.io/badge/Give%20a%20Star-yellow?style=for-the-badge&logo=github)](https://github.com/0xarchit/github-profile-analyzer/stargazers)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/0xarchit)
 
-## Contributing
+## Community
 
-Contributions are welcome. Please see [CONTRIBUTING.md](https://github.com/0xarchit/github-profile-analyzer?tab=contributing-ov-file#contributing-to-github-profile-analyzer) for guidelines.
+<div align="center">
 
-## Security
+<table>
+  <tr>
+    <th>Contributing</th>
+    <th>Security</th>
+    <th>License</th>
+  </tr>
+  <tr>
+    <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/CONTRIBUTING.md">Guidelines</a></td>
+    <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/SECURITY.md">Policy</a></td>
+    <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/LICENSE">MIT</a></td>
+  </tr>
+</table>
 
-For security vulnerabilities, see [SECURITY.md](https://github.com/0xarchit/github-profile-analyzer?tab=security-ov-file#security-policy).
+Issues and pull requests are welcome.
 
-## License
-
-MIT License. See [LICENSE](https://github.com/0xarchit/github-profile-analyzer?tab=MIT-1-ov-file) for details.
+</div>
 
 ## StarMapper
 
