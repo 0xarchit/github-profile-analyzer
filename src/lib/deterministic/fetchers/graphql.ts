@@ -1,11 +1,12 @@
 import type { GraphQLSummary, GitHubRepo, RepoIssueSummary } from "../types";
-import { hoursBetween } from "../rules/shared";
+import { hoursBetween, ratio } from "../rules/shared";
 import { GitHubClient, UserNotFoundError } from "./client";
 
 export const emptyGraphQLSummary = (): GraphQLSummary => ({
   totalContributions: 0,
   restrictedContributionsCount: 0,
   totalCommitContributions: 0,
+  previousYearTotalContributions: null,
   totalPullRequestReviewContributions: 0,
   totalPullRequestContributions: 0,
   totalIssueContributions: 0,
@@ -20,12 +21,13 @@ export const emptyGraphQLSummary = (): GraphQLSummary => ({
   repositoriesContributedToCount: 0,
   pullRequests: [],
   reviews: [],
+  sponsoringLogins: [],
   graphqlCost: 0,
   graphqlRemaining: 0,
 });
 
 const MAIN_QUERY = `
-query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!) {
+query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!, $prevFrom: DateTime!) {
   user(login: $login) {
     login
     name
@@ -41,23 +43,22 @@ query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!) {
     followers { totalCount }
     following { totalCount }
     repositories { totalCount }
-    gists(privacy: PUBLIC) { totalCount }
     followersList: followers(first: 100) { nodes { login } }
     followingList: following(first: 100) { nodes { login } }
-    gistList: gists(first: 100, privacy: PUBLIC) {
-      nodes { id createdAt updatedAt comments(first: 1) { totalCount } }
-    }
     pinnedItems(first: 6, types: [REPOSITORY]) {
       nodes { ... on Repository { nameWithOwner stargazerCount } }
     }
     starredRepositories { totalCount }
-    sponsoring(first: 1) { totalCount }
+    sponsoring(first: 10) {
+      totalCount
+      nodes { ... on User { login } ... on Organization { login } }
+    }
     sponsors(first: 1) { totalCount }
     repositoriesContributedTo(first: 1, includeUserRepositories: false) { totalCount }
     pullRequests(first: 100, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { createdAt mergedAt mergedBy { login } repository { nameWithOwner owner { login } } }
     }
-    contributionsCollection(from: $from, to: $to) {
+    recent: contributionsCollection(from: $from, to: $to) {
       totalCommitContributions
       totalPullRequestReviewContributions
       totalPullRequestContributions
@@ -73,8 +74,11 @@ query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!) {
         contributions { totalCount }
       }
       pullRequestReviewContributions(first: 100) {
-        nodes { occurredAt pullRequest { title } }
+        nodes { occurredAt pullRequest { title repository { nameWithOwner owner { login } } } }
       }
+    }
+    previousYear: contributionsCollection(from: $prevFrom, to: $from) {
+      contributionCalendar { totalContributions }
     }
   }
   profileReadmeRepo: repository(owner: $login, name: $login) {
@@ -99,17 +103,15 @@ interface MainResponse {
     followers: { totalCount: number };
     following: { totalCount: number };
     repositories: { totalCount: number };
-    gists: { totalCount: number };
     followersList: { nodes: Array<{ login: string } | null> };
     followingList: { nodes: Array<{ login: string } | null> };
-    gistList: { nodes: Array<{ id: string; createdAt: string; updatedAt: string; comments: { totalCount: number } } | null> };
     pinnedItems: { nodes: Array<{ nameWithOwner: string; stargazerCount: number } | null> };
     starredRepositories: { totalCount: number };
-    sponsoring: { totalCount: number };
+    sponsoring: { totalCount: number; nodes: Array<{ login?: string } | null> };
     sponsors: { totalCount: number };
     repositoriesContributedTo: { totalCount: number };
     pullRequests: { nodes: Array<GraphQLSummary["pullRequests"][number] | null> };
-    contributionsCollection: {
+    recent: {
       totalCommitContributions: number;
       totalPullRequestReviewContributions: number;
       totalPullRequestContributions: number;
@@ -118,8 +120,9 @@ interface MainResponse {
       contributionYears: number[];
       contributionCalendar: { totalContributions: number; weeks: Array<{ contributionDays: GraphQLSummary["calendar"] }> };
       commitContributionsByRepository: Array<{ repository: { nameWithOwner: string }; contributions: { totalCount: number } }>;
-      pullRequestReviewContributions: { nodes: Array<{ occurredAt: string; pullRequest: { title: string } | null } | null> };
+      pullRequestReviewContributions: { nodes: Array<{ occurredAt: string; pullRequest: { title: string; repository?: { nameWithOwner: string; owner?: { login: string } } | null } | null } | null> };
     };
+    previousYear: null | { contributionCalendar: { totalContributions: number } };
   };
   profileReadmeRepo: null | { readme: null | { byteSize: number; text: string } };
   rateLimit: { cost: number; remaining: number; resetAt: string };
@@ -127,7 +130,6 @@ interface MainResponse {
 
 export interface ProfileCoreResult {
   user: import("../types").GitHubUser;
-  gists: Array<{ id: string; created_at: string; updated_at: string; comments: number }>;
   followers: string[];
   following: string[];
   summary: GraphQLSummary;
@@ -137,10 +139,11 @@ export interface ProfileCoreResult {
 export async function fetchProfileCore(client: GitHubClient, username: string, now: Date): Promise<ProfileCoreResult> {
   const to = now.toISOString();
   const from = new Date(now.getTime() - 365 * 86_400_000).toISOString();
-  const response = await client.graphql<MainResponse>(MAIN_QUERY, { login: username, from, to }, "profile core batch");
+  const prevFrom = new Date(now.getTime() - 730 * 86_400_000).toISOString();
+  const response = await client.graphql<MainResponse>(MAIN_QUERY, { login: username, from, to, prevFrom }, "profile core batch");
   if (!response.user) throw new UserNotFoundError(username);
   const u = response.user;
-  const collection = u.contributionsCollection;
+  const collection = u.recent;
   const calendarDays: GraphQLSummary["calendar"] = collection.contributionCalendar.weeks.flatMap(
     (week, weekIndex) =>
       week.contributionDays.map((day) => ({
@@ -152,6 +155,7 @@ export async function fetchProfileCore(client: GitHubClient, username: string, n
     totalContributions: collection.contributionCalendar.totalContributions,
     restrictedContributionsCount: collection.restrictedContributionsCount,
     totalCommitContributions: collection.totalCommitContributions,
+    previousYearTotalContributions: u.previousYear?.contributionCalendar.totalContributions ?? null,
     totalPullRequestReviewContributions: collection.totalPullRequestReviewContributions,
     totalPullRequestContributions: collection.totalPullRequestContributions,
     totalIssueContributions: collection.totalIssueContributions,
@@ -162,12 +166,13 @@ export async function fetchProfileCore(client: GitHubClient, username: string, n
     pinnedItems: u.pinnedItems.nodes.filter((item): item is NonNullable<typeof item> => Boolean(item)),
     starredRepositoriesCount: u.starredRepositories.totalCount,
     sponsoringCount: u.sponsoring.totalCount,
+    sponsoringLogins: (u.sponsoring.nodes ?? []).filter((n): n is { login: string } => Boolean(n?.login)).map((n) => n.login),
     sponsorCount: u.sponsors.totalCount,
     repositoriesContributedToCount: u.repositoriesContributedTo.totalCount,
     pullRequests: u.pullRequests.nodes.filter((node): node is NonNullable<typeof node> => Boolean(node)),
     reviews: collection.pullRequestReviewContributions.nodes
-      .filter((node): node is { occurredAt: string; pullRequest: { title: string } } => node !== null && node !== undefined && node.pullRequest !== null && node.pullRequest !== undefined)
-      .map((node) => ({ occurredAt: node.occurredAt, title: node.pullRequest.title })),
+      .filter((node): node is { occurredAt: string; pullRequest: { title: string; repository?: { nameWithOwner: string; owner?: { login: string } } | null } } => node !== null && node !== undefined && node.pullRequest !== null && node.pullRequest !== undefined)
+      .map((node) => ({ occurredAt: node.occurredAt, title: node.pullRequest.title, repository: node.pullRequest.repository?.nameWithOwner ?? "" })),
     graphqlCost: response.rateLimit.cost,
     graphqlRemaining: response.rateLimit.remaining,
   };
@@ -181,7 +186,7 @@ export async function fetchProfileCore(client: GitHubClient, username: string, n
     followers: u.followers.totalCount,
     following: u.following.totalCount,
     public_repos: u.repositories.totalCount,
-    public_gists: u.gists.totalCount,
+    public_gists: 0,
     hireable: null,
     blog: u.websiteUrl ?? "",
     location: u.location,
@@ -192,12 +197,6 @@ export async function fetchProfileCore(client: GitHubClient, username: string, n
   const readmeBlob = response.profileReadmeRepo?.readme ?? null;
   return {
     user,
-    gists: u.gistList.nodes.filter((item): item is NonNullable<typeof item> => Boolean(item)).map((gist) => ({
-      id: gist.id,
-      created_at: gist.createdAt,
-      updated_at: gist.updatedAt,
-      comments: gist.comments?.totalCount ?? 0,
-    })),
     followers: u.followersList.nodes.filter((item): item is { login: string } => Boolean(item)).map((item) => item.login),
     following: u.followingList.nodes.filter((item): item is { login: string } => Boolean(item)).map((item) => item.login),
     summary,
@@ -224,7 +223,7 @@ export async function fetchRepoIssueSummaries(client: GitHubClient, repos: GitHu
       closed: issues(states: CLOSED) { totalCount }
       discussions { totalCount }
       recent: issues(first: 25, orderBy: {field: CREATED_AT, direction: DESC}) {
-        nodes { createdAt comments(first: 1) { nodes { createdAt } } }
+        nodes { createdAt labels(first:5) { nodes { name } } comments(first: 1) { nodes { createdAt } } }
       }
     }`;
     })
@@ -235,7 +234,7 @@ export async function fetchRepoIssueSummaries(client: GitHubClient, repos: GitHu
     open: { totalCount: number };
     closed: { totalCount: number };
     discussions: { totalCount: number };
-    recent: { nodes: Array<{ createdAt: string; comments: { nodes: Array<{ createdAt: string }> } }> };
+    recent: { nodes: Array<{ createdAt: string; labels?: { nodes?: Array<{ name?: string } | null> | null }; comments: { nodes: Array<{ createdAt: string }> } }> };
   } | null>>(query, variables, "repository issue summary batch");
 
   const entries: Array<[string, RepoIssueSummary]> = [];
@@ -248,6 +247,10 @@ export async function fetchRepoIssueSummaries(client: GitHubClient, repos: GitHu
           ? [hoursBetween(issue.createdAt, issue.comments.nodes[0].createdAt)]
           : [],
       ) ?? [];
+    const recentNodes = item.recent?.nodes ?? [];
+    const labeledRatio = recentNodes.length
+      ? ratio(recentNodes.filter((issue) => (issue.labels?.nodes ?? []).length > 0).length, recentNodes.length)
+      : null;
     entries.push([
       repo.full_name,
       {
@@ -255,6 +258,7 @@ export async function fetchRepoIssueSummaries(client: GitHubClient, repos: GitHu
         closed: item.closed?.totalCount ?? 0,
         discussions: item.discussions?.totalCount ?? 0,
         responseHours,
+        labeledRatio: labeledRatio === null ? undefined : Math.round(labeledRatio * 100) / 100,
       },
     ]);
   });

@@ -13,10 +13,10 @@ import type { AnalysisMode, AnalysisModeProfile, AnalysisProgressCallback, Analy
 export const DEEP_DIVE_PROFILE: AnalysisModeProfile = {
   id: "deep",
   label: "Deep dive",
-  description: "Single full-depth deterministic pass built on batched GraphQL; ~12 API calls per run.",
-  expectedCalls: { minimum: 10, maximum: 16 },
-  budget: { rest: 12, graphql: 9, search: 2 },
-  repositoryLimit: 8,
+  description: "Single full-depth deterministic pass built on batched GraphQL; ~30 API calls per run.",
+  expectedCalls: { minimum: 18, maximum: 30 },
+  budget: { rest: 30, graphql: 10, search: 2 },
+  repositoryLimit: 10,
   forkLimit: 3,
   commitDetailLimit: 100,
 };

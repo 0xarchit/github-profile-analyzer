@@ -304,21 +304,19 @@ export const rule1_33OrgRoleDepth: BaselineRule = () =>
 
 // Single reduce pass accumulates wiki, pages, and discussions counts.
 export const rule1_34CommunityFeatures: BaselineRule = (data) => {
-  const total = data.repos.length;
+  const total = Math.max(data.repos.length, 1);
   let wiki = 0;
-  let pages = 0;
   let discussions = 0;
   for (const repo of data.repos) {
     if (repo.has_wiki) wiki++;
-    if (repo.has_pages) pages++;
     if (repo.has_discussions) discussions++;
   }
   const value = {
     wikiRatio: round(ratio(wiki, total), 4),
-    pagesRatio: round(ratio(pages, total), 4),
     discussionsRatio: round(ratio(discussions, total), 4),
+    caveat: "GitHub Pages status is not exposed by the GraphQL API and is excluded.",
   };
-  return ok("1.34", "Wiki, Pages and Discussions enabled", value, "Repository documentation and community feature ratios.", "GET /users/{u}/repos");
+  return ok("1.34", "Wiki and Discussions enabled", value, "Repository documentation feature ratios (Pages is not queryable via the GraphQL API).", "GraphQL repository batch");
 };
 
 export const rule1_35GpgRatio: BaselineRule = (data) => {
@@ -331,20 +329,8 @@ export const rule1_35GpgRatio: BaselineRule = (data) => {
   }, `${verified} of ${commits.length} sampled commits are verified.`, "GET /repos/{o}/{r}/commits", commits.length, "Uses at most 100 authored commits per sampled repository.");
 };
 
-export const rule1_36BranchProtection: BaselineRule = (data) => {
-  const values = data.topRepos.map((repo) => {
-    const branch = (data.branches[repo.full_name] ?? []).find((item) => item.name === repo.default_branch);
-    return { repository: repo.full_name, defaultBranch: repo.default_branch, protected: branch?.protected ?? false, available: Boolean(branch) };
-  });
-  const available = values.filter((item) => item.available);
-  const protectedCount = available.filter((item) => item.protected).length;
-  return moderateSample("1.36", "Default branch protection", {
-    protected: protectedCount,
-    checked: available.length,
-    ratio: round(ratio(protectedCount, available.length), 4),
-    repositories: values,
-  }, `${protectedCount} of ${available.length} available default branches are protected.`, "GET /repos/{o}/{r}/branches", available.length);
-};
+export const rule1_36BranchProtection: BaselineRule = () =>
+  unavailable("1.36", "Default branch protection", "Branch-protection status requires push access to each repository and cannot be truthfully read with pool or OAuth read-only tokens.", "GET /repos/{o}/{r}/branches");
 
 export const rule1_37StarGini: BaselineRule = (data) => {
   const value = round(gini(data.repos.filter((repo) => !repo.fork).map((repo) => repo.stargazers_count)), 4);

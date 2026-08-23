@@ -38,8 +38,6 @@ if (!username) {
   process.exit(1);
 }
 
-const REST_LIMIT = 50;
-const GQL_LIMIT = 50;
 const CF_TOTAL_LIMIT = 50;
 const REPO_LIMIT = 10;
 const FORK_COMPARE_LIMIT = 5;
@@ -92,7 +90,7 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }
   let cursor: string | null = null;
   let pagesUsed = 0;
   for (let page = 1; page <= 3; page += 1) {
-    const { data } = await gql<{ user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean }> } } | null }>(
+    const gqlRes = await gql<{ user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean }> } } | null }>(
       `query($login:String!,$cursor:String) {
         user(login:$login) {
           repositories(first:100, after:$cursor, ownerAffiliations:[OWNER], orderBy:{field:PUSHED_AT, direction:DESC}) {
@@ -104,6 +102,7 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }
       { login: username, cursor },
       `repo-list-p${page}`,
     );
+    const data = gqlRes.data as { user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean }> } | null } | null };
     pagesUsed = page;
     const conn = data?.user?.repositories;
     if (!conn) break;
@@ -152,12 +151,12 @@ async function probeProfileCoreV3(): Promise<void> {
     { login: username, from: yearAgo, to, prevFrom: twoYearsAgo },
     "profile-core-v3",
   );
-  const u = data?.user as null | {
+  const u = (data as { user?: null | {
     sponsoring?: { totalCount: number; nodes?: Array<{ login?: string } | null> };
     recent?: { pullRequestReviewContributions?: { nodes?: Array<{ pullRequest?: { repository?: { nameWithOwner: string } } | null } | null> } };
     previousYear?: { contributionCalendar?: { totalContributions: number } };
     followersList?: { nodes?: Array<{ login: string } | null> };
-  } | undefined;
+  } })?.user;
   if (!u) return;
   const sponsorLogins = (u.sponsoring?.nodes ?? []).filter(Boolean).map((n) => n!.login).filter(Boolean);
   const reviewsWithRepo = (u.recent?.pullRequestReviewContributions?.nodes ?? []).filter((n) => n?.pullRequest?.repository?.nameWithOwner).length;
@@ -207,8 +206,8 @@ async function probeRepoEnrichment(repos: RepoLite[]): Promise<void> {
         } } }
       }`).join("\n")}
     }`;
-    const { data } = await gql(q, {}, `enrich-batch-${off}`);
-    const first = data?.[`repo_${off}`] as null | { defaultBranchRef?: { target?: { statusCheckRollup?: { state?: string }; history?: { nodes?: unknown[] } } } } | null;
+    const gqlRes = await gql<Record<string, unknown>>(q, {}, `enrich-batch-${off}`);
+    const first = (gqlRes.data as Record<string, unknown> | null)?.[`repo_${off}`] as null | { defaultBranchRef?: { target?: { statusCheckRollup?: { state?: string }; history?: { nodes?: unknown[] } } } } | null;
     if (first) {
       console.log(`    tier-A HEAD CI state: ${first.defaultBranchRef?.target?.statusCheckRollup?.state ?? "none"} · commits: ${(first.defaultBranchRef?.target?.history?.nodes ?? []).length}`);
     }

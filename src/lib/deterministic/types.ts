@@ -150,6 +150,7 @@ export interface GraphQLSummary {
   totalContributions: number;
   restrictedContributionsCount: number;
   totalCommitContributions: number;
+  previousYearTotalContributions: number | null;
   totalPullRequestReviewContributions: number;
   totalPullRequestContributions: number;
   totalIssueContributions: number;
@@ -163,7 +164,8 @@ export interface GraphQLSummary {
   sponsorCount: number;
   repositoriesContributedToCount: number;
   pullRequests: PullRequestNode[];
-  reviews: Array<{ occurredAt: string; title: string }>;
+  reviews: Array<{ occurredAt: string; title: string; repository?: string }>;
+  sponsoringLogins: string[];
   graphqlCost: number;
   graphqlRemaining: number;
 }
@@ -172,10 +174,14 @@ export interface SearchSummary {
   prsOpened: number;
   prsMerged: number;
   prsMergedExternal: number;
+  prsOpenedExternal: number;
   issuesOpened: number;
   issuesClosed: number;
   reviews: number;
   discussionsAuthored: number;
+  discussionsAnswered: number;
+  commenterEvents: number;
+  highResonanceIssues: number;
   authoredIssues: Array<{ repository: string; number: number; createdAt: string }>;
   caps: string[];
 }
@@ -199,12 +205,14 @@ export interface RepoIssueSummary {
   closed: number;
   discussions: number;
   responseHours: number[];
+  labeledRatio?: number;
 }
 
 export interface ReleaseInfo {
   tag_name: string;
   published_at: string | null;
   prerelease: boolean;
+  description?: string | null;
   assets: Array<{ download_count: number }>;
 }
 
@@ -216,6 +224,10 @@ export interface SecuritySummary {
   dependabotEnabled: boolean;
   checks: Array<{ conclusion: string | null; status: string }>;
   dependencyManifests?: Record<string, number>;
+  headCiState?: string | null;
+  communityHealth?: number | null;
+  pullRequestTemplatePresent?: boolean;
+  actionsRuns?: { total: number; success: number } | null;
 }
 
 export interface GitHubEvent {

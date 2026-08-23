@@ -322,16 +322,19 @@ export const rule2_11CommunityScore: ScoreRule = (data) => {
   const review = saturatingScore(data.graphql.totalPullRequestReviewContributions, 0.06);
   const discussionsTotal = Object.values(data.issues).reduce((sum, item) => sum + item.discussions, 0);
   const discussions = saturatingScore(discussionsTotal, 0.08);
+  const labeledValues = Object.values(data.issues).map((item) => item.labeledRatio).filter((value): value is number => typeof value === "number");
+  const labeledMedian = labeledValues.length ? median(labeledValues) : null;
   return finishScore(
     "2.11",
     "Community score",
-    "Maintainer response, merge rate, reviews, and discussions.",
+    "Maintainer response, merge rate, reviews, discussions, and issue triage.",
     "GraphQL repository issue batch + Search API",
     [
       factor("Issue response time", response.length ? `median first reply ${round(median(response), 1)}h across ${response.length} samples (30%)` : "no samples; neutral baseline credited (30%)", latency * 0.3, 30),
       factor("Own-PR merge rate", `${data.search.prsMerged}/${data.search.prsOpened} merged (25%)`, mergeRate * 0.25, 25),
       factor("Reviews written", `${data.graphql.totalPullRequestReviewContributions} review contributions (25%)`, review * 0.25, 25),
       factor("Discussions enabled", `${discussionsTotal} discussions across sampled repositories (20%)`, discussions * 0.2, 20),
+      ...(labeledMedian !== null ? [factor("Issue triage (labels)", `median ${Math.round(labeledMedian * 100)}% of recent issues carry labels`, 0, 100)] : []),
     ],
     response.length === 0 || median(response) > 48 ? "Reply to open issues on your repositories; unanswered issues lower this score." : undefined,
     { responseSamples: response.length, medianResponseHours: median(response), discussions: discussionsTotal },
@@ -342,16 +345,30 @@ export const rule2_12SecurityHygieneScore: ScoreRule = (data) => {
   const qualities = Object.entries(data.qualities);
   const count = Math.max(qualities.length, 1);
   const securityShare = qualities.filter(([, quality]) => quality.securityPolicyPresent).length / count;
-  const ciShare = qualities.filter(([, quality]) => quality.ciPresent).length / count;
+  const ciEntries = Object.values(data.security).filter((entry) => entry.headCiState || entry.actionsRuns);
+  const ciPassingShare = ciEntries.length
+    ? ciEntries.filter((entry) =>
+        entry.headCiState ? entry.headCiState === "SUCCESS" : (entry.actionsRuns?.total ?? 0) > 0 && entry.actionsRuns!.success === entry.actionsRuns!.total,
+      ).length / ciEntries.length
+    : null;
+  const ciPresenceShare = qualities.filter(([, quality]) => quality.ciPresent).length / count;
   const licenseShare = qualities.filter(([, quality]) => quality.licensePresent).length / count;
+  const ciEarned = ciPassingShare === null ? ciPresenceShare * 35 : (ciPresenceShare * 15) + (ciPassingShare * 20);
   return finishScore(
     "2.12",
     "Security hygiene score",
-    "Public security posture: SECURITY.md policy, CI check runs, and license clarity.",
-    "GraphQL community-file probes + CI detection",
+    "Public security posture: SECURITY.md policy, CI presence and pass rate, and license clarity.",
+    "GraphQL statusCheckRollup + community probes + Actions runs",
     [
       factor("SECURITY.md policy", `${Math.round(securityShare * count)} of ${count} repositories`, securityShare * 40, 40),
-      factor("CI check runs", `${Math.round(ciShare * count)} of ${count} repositories run workflows`, ciShare * 35, 35),
+      factor(
+        "CI workflows",
+        ciPassingShare === null
+          ? `${Math.round(ciPresenceShare * count)} of ${count} repositories run workflows`
+          : `${Math.round(ciPresenceShare * count)} of ${count} run CI · HEAD state passing on ${Math.round(ciPassingShare * ciEntries.length)} of ${ciEntries.length}`,
+        ciEarned,
+        35,
+      ),
       factor("Clear licensing", `${Math.round(licenseShare * count)} of ${count} repositories`, licenseShare * 25, 25),
     ],
     securityShare === 0 ? "Add a SECURITY.md describing how to report vulnerabilities privately." : undefined,
@@ -387,18 +404,25 @@ export const rule2_14LongevityScore: ScoreRule = (data) => {
   let activeDays = 0;
   for (const day of data.graphql.calendar) if (day.contributionCount > 0) activeDays++;
   const activeRatio = ratio(activeDays, data.graphql.calendar.length);
+  const previousYearTotal = data.graphql.previousYearTotalContributions;
+  const yoyDeltaPercent = previousYearTotal !== null && previousYearTotal > 0
+    ? Math.round(((data.graphql.totalContributions - previousYearTotal) / previousYearTotal) * 100)
+    : null;
+  const yoyFactor = yoyDeltaPercent === null
+    ? null
+    : factor("Year-over-year momentum", `${data.graphql.totalContributions} vs ${previousYearTotal} (${yoyDeltaPercent >= 0 ? "+" : ""}${yoyDeltaPercent}%)`, clamp(50 + yoyDeltaPercent / 2), 100);
   return finishScore(
     "2.14",
     "Longevity score",
-    "Log-scaled account age, active years, and consistency.",
-    "User profile + contributionsCollection",
+    "Log-scaled account age, active years, consistency, and year-over-year trajectory.",
+    "User profile + contributionsCollection (current & previous year)",
     [
       factor("Account age", `${Math.round(accountYears * 10) / 10} years (40%)`, saturatingScore(accountYears, 0.22) * 0.4, 40),
       factor("Active years", `${activeYears} years with contributions (30%)`, saturatingScore(activeYears, 0.45) * 0.3, 30),
       factor("Year-round activity", `${round(activeRatio * 100, 1)}% of days active (30%)`, activeRatio * 100 * 0.3, 30),
-    ],
+    ].concat(yoyFactor ? [{ ...yoyFactor }] : []),
     undefined,
-    { accountYears, activeYears, activeRatio },
+    { accountYears, activeYears, activeRatio, yoyDeltaPercent },
   );
 };
 

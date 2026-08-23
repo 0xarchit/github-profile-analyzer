@@ -31,6 +31,7 @@ interface RepoBatchGqlNode {
   defaultBranchRef?: {
     name?: string;
     target?: {
+      statusCheckRollup?: { state?: string } | null;
       history?: {
         totalCount?: number;
         nodes?: HistoryNodeLite[];
@@ -39,12 +40,15 @@ interface RepoBatchGqlNode {
   };
 }
 
-import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, SearchSummary } from "../types";
+import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubCommit, GitHubRepo, SearchSummary, SecuritySummary } from "../types";
 import { GitHubClient, GitHubRequestError, UserNotFoundError } from "./client";
 import {
   compareRefs,
   fetchCommitPulls,
   fetchPublicEventsPage,
+  fetchCommunityProfile,
+  fetchActionsRuns,
+  fetchPublicGists,
   fetchPublicOrgs,
   fetchRateLimit,
   fetchSubscriptions,
@@ -143,11 +147,15 @@ const emptySearch = (): SearchSummary => ({
   prsOpened: 0,
   prsMerged: 0,
   prsMergedExternal: 0,
+  prsOpenedExternal: 0,
   issuesOpened: 0,
   issuesClosed: 0,
   authoredIssues: [],
   reviews: 0,
   discussionsAuthored: 0,
+  discussionsAnswered: 0,
+  commenterEvents: 0,
+  highResonanceIssues: 0,
   caps: [],
 });
 
@@ -157,6 +165,32 @@ const repoRank = (repo: GitHubRepo, now: Date) => {
   const recencyBoost = 30 * Math.exp(-daysSincePush / 180);
   return Math.log1p(repo.stargazers_count) * 18 + Math.log1p(repo.forks_count) * 10 + Math.log1p(repo.size) + recencyBoost;
 };
+
+
+async function mapConcurrentParallel<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
+  await Promise.all(items.map((item) => fn(item)));
+}
+
+interface PinnedItem { nameWithOwner: string }
+
+async function fetchPinnedEnrichment(client: GitHubClient, pinnedItems: PinnedItem[]): Promise<Record<string, unknown>> {
+  if (!pinnedItems.length) return {};
+  const q = `query {
+    ${pinnedItems
+      .map((p, i) => {
+        const [owner, name] = p.nameWithOwner.split("/");
+        return `
+    pin_${i}: repository(owner:"${owner}", name:"${name}") {
+      description primaryLanguage { name } stargazerCount forkCount pushedAt
+      readme: object(expression:"HEAD:README.md") { ... on Blob { byteSize } }
+      licenseInfo { spdxId }
+      repositoryTopics(first:10) { nodes { topic { name } } }
+    }`;
+      })
+      .join("\n")}
+  }`;
+  return client.graphql(q, {}, "pinned-enrichment");
+}
 
 const recordFailure = (unavailable: Record<string, string>, label: string, error: unknown) => {
   unavailable[label] = error instanceof Error ? error.message : String(error);
@@ -176,6 +210,20 @@ async function safe<T>(
     return fallback;
   }
 }
+
+const DEPENDENCY_MANIFEST_MATCHERS: Array<[RegExp, string]> = [
+  [/^package\.json$|^yarn\.lock$|^pnpm-lock\.yaml$|^package-lock\.json$/i, "npm"],
+  [/^requirements.*\.txt$|^pyproject\.toml$|^setup\.py$|^Pipfile$|^poetry\.lock$/i, "pip"],
+  [/^go\.(mod|sum|work)$/i, "Go modules"],
+  [/^Cargo\.(toml|lock)$/i, "Cargo"],
+  [/^pom\.xml$|^build\.gradle(\.kts)?$|^gradle\.properties$/i, "Maven/Gradle"],
+  [/^composer\.json$/i, "Packagist"],
+  [/^Gemfile$|\.gemspec$/i, "RubyGems"],
+  [/\.csproj$|\.fsproj$|^nuget\.config$/i, "NuGet"],
+  [/^Package\.swift$|^Podfile$/i, "Swift"],
+  [/^mix\.exs$/i, "Hex"],
+  [/^pubspec\.yaml$/i, "Pub"],
+];
 
 const hashNodeId = (value: string): number => {
   let hash = 0;
@@ -323,14 +371,19 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
     query UserSearchCounts(
       $prsQuery: String!
       $prsMergedQuery: String!
-      $prsExternalQuery: String!
+      $prsExternalMergedQuery: String!
+      $prsExternalOpenedQuery: String!
       $issuesQuery: String!
       $issuesClosedQuery: String!
       $discussionsQuery: String!
+      $discussionsAnsweredQuery: String!
+      $commenterQuery: String!
+      $resonanceQuery: String!
     ) {
       searchPrs: search(query: $prsQuery, type: ISSUE, first: 1) { issueCount }
       searchPrsMerged: search(query: $prsMergedQuery, type: ISSUE, first: 1) { issueCount }
-      searchPrsExternal: search(query: $prsExternalQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsExternalMerged: search(query: $prsExternalMergedQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsExternalOpened: search(query: $prsExternalOpenedQuery, type: ISSUE, first: 1) { issueCount }
       searchIssues: search(query: $issuesQuery, type: ISSUE, first: 25) {
         issueCount
         nodes {
@@ -343,34 +396,49 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
       }
       searchIssuesClosed: search(query: $issuesClosedQuery, type: ISSUE, first: 1) { issueCount }
       searchDiscussions: search(query: $discussionsQuery, type: DISCUSSION, first: 1) { issueCount }
+      searchDiscussionsAnswered: search(query: $discussionsAnsweredQuery, type: DISCUSSION, first: 1) { issueCount }
+      searchCommenter: search(query: $commenterQuery, type: ISSUE, first: 1) { issueCount }
+      searchResonance: search(query: $resonanceQuery, type: ISSUE, first: 1) { issueCount }
     }
   `;
   try {
     const data = await client.graphql<{
       searchPrs: { issueCount: number };
       searchPrsMerged: { issueCount: number };
-      searchPrsExternal: { issueCount: number };
+      searchPrsExternalMerged: { issueCount: number };
+      searchPrsExternalOpened: { issueCount: number };
       searchIssues: { issueCount: number; nodes: Array<{ number: number; createdAt: string; repository: { nameWithOwner: string } }> };
       searchIssuesClosed: { issueCount: number };
       searchDiscussions: { issueCount: number };
+      searchDiscussionsAnswered: { issueCount: number };
+      searchCommenter: { issueCount: number };
+      searchResonance: { issueCount: number };
     }>(
       GQL_SEARCH,
       {
         prsQuery: `author:${username} type:pr`,
         prsMergedQuery: `author:${username} type:pr is:merged`,
-        prsExternalQuery: `author:${username} type:pr is:merged -user:${username}`,
+        prsExternalMergedQuery: `author:${username} type:pr is:merged -user:${username}`,
+        prsExternalOpenedQuery: `author:${username} type:pr -user:${username}`,
         issuesQuery: `author:${username} type:issue`,
         issuesClosedQuery: `author:${username} type:issue is:closed`,
         discussionsQuery: `author:${username} type:discussion`,
+        discussionsAnsweredQuery: `author:${username} type:discussion is:answered`,
+        commenterQuery: `commenter:${username} -author:${username}`,
+        resonanceQuery: `author:${username} type:issue reactions:>2`,
       },
       "user-search-batch",
     );
     summary.prsOpened = data.searchPrs?.issueCount ?? 0;
     summary.prsMerged = data.searchPrsMerged?.issueCount ?? 0;
-    summary.prsMergedExternal = data.searchPrsExternal?.issueCount ?? 0;
+    summary.prsMergedExternal = data.searchPrsExternalMerged?.issueCount ?? 0;
+    summary.prsOpenedExternal = data.searchPrsExternalOpened?.issueCount ?? 0;
     summary.issuesOpened = data.searchIssues?.issueCount ?? 0;
     summary.issuesClosed = data.searchIssuesClosed?.issueCount ?? 0;
     summary.discussionsAuthored = data.searchDiscussions?.issueCount ?? 0;
+    summary.discussionsAnswered = data.searchDiscussionsAnswered?.issueCount ?? 0;
+    summary.commenterEvents = data.searchCommenter?.issueCount ?? 0;
+    summary.highResonanceIssues = data.searchResonance?.issueCount ?? 0;
     summary.authoredIssues = (data.searchIssues?.nodes ?? []).map((node) => ({
       repository: node.repository?.nameWithOwner ?? "",
       number: node.number,
@@ -469,14 +537,18 @@ export async function collectEngineData(
     ...ranked.filter((repo) => repo.fork && !repo.disabled),
   ].slice(0, profile.repositoryLimit);
 
-  emit("phase", "public-activity", "Collecting public events, organizations, subscriptions, and search totals.");
-  const [events, orgs, subscriptions, search] = await Promise.all([
+  emit("phase", "public-activity", "Collecting a 90-day event window, organizations, gists, subscriptions, and search totals.");
+  const [eventsP1, eventsP2, eventsP3, orgs, gists, subscriptions, search] = await Promise.all([
     safe(unavailable, "events", [], async () => (await fetchPublicEventsPage(client, username, 1)).data),
+    safe(unavailable, "events-page-2", [], async () => (await fetchPublicEventsPage(client, username, 2)).data),
+    safe(unavailable, "events-page-3", [], async () => (await fetchPublicEventsPage(client, username, 3)).data),
     safe(unavailable, "orgs", [] as Array<{ login: string; avatar_url: string }>, async () => (await fetchPublicOrgs(client, username)).data),
+    safe(unavailable, "gists", [] as Array<{ id: string; created_at: string; updated_at: string; comments: number }>, async () => (await fetchPublicGists(client, username)).data),
     safe(unavailable, "subscriptions", [], async () => (await fetchSubscriptions(client, username)).data),
     fetchSearchSummary(client, username, unavailable),
   ]);
-  const { user, gists, followers, following, summary: graphql, profileReadme } = core;
+  const events = [...eventsP1, ...eventsP2, ...eventsP3].slice(0, 300);
+  const { user, followers, following, summary: graphql, profileReadme } = core;
   search.reviews = graphql.totalPullRequestReviewContributions;
 
   const languages: EngineData["languages"] = {};
@@ -518,12 +590,16 @@ export async function collectEngineData(
                   tagName
                   publishedAt
                   isPrerelease
+                  description
                   releaseAssets(first: 10) {
                     nodes {
                       downloadCount
                     }
                   }
                 }
+              }
+              tags: refs(refPrefix: "refs/tags/", first: 10) {
+                totalCount
               }
               branches: refs(refPrefix: "refs/heads/", first: 1) {
                 totalCount
@@ -552,6 +628,7 @@ export async function collectEngineData(
               defaultBranchRef {
                 target {
                   ... on Commit {
+                    statusCheckRollup { state }
                     history(first: 100) {
                       totalCount
                       nodes {
@@ -685,6 +762,26 @@ export async function collectEngineData(
             mirror_url: null,
             owner: { login: key.split("/")[0] ?? "" },
           }));
+
+          security[key] = {
+            sbomPackages: [],
+            codeScanning: null,
+            dependabot: null,
+            codeScanningEnabled: false,
+            dependabotEnabled: false,
+            headCiState: d.defaultBranchRef?.target?.statusCheckRollup?.state ?? null,
+            checks: (qualities[key]?.ciPresent ? [{ conclusion: "success", status: "completed" }] : []) as SecuritySummary["checks"],
+            dependencyManifests: rootEntries.reduce<Record<string, number>>((counts, entry) => {
+              const name = entry.name ?? "";
+              for (const [pattern, ecosystem] of DEPENDENCY_MANIFEST_MATCHERS) {
+                if (pattern.test(name)) {
+                  counts[ecosystem] = (counts[ecosystem] ?? 0) + 1;
+                  break;
+                }
+              }
+              return counts;
+            }, {}),
+          };
         });
       } catch (err) {
         recordFailure(unavailable, `repos-batch-${offset}-graphql`, err);
@@ -694,7 +791,7 @@ export async function collectEngineData(
 
   sampled["repository-enrichment"] = {
     size: topRepos.length,
-    note: `Moderate repository rules are capped at the top ${profile.repositoryLimit} repositories in ${profile.label.toLowerCase()} mode.`,
+    note: `Moderate repository rules sample the top ${profile.repositoryLimit} repositories ranked by activity and impact.`,
   };
 
   emit("phase", "issue-review-enrichment", "Collecting issue response, review comment, security, and workflow evidence.");
@@ -711,6 +808,33 @@ export async function collectEngineData(
     body: r.title,
     createdAt: r.occurredAt,
   }));
+
+  emit("phase", "showcase-integrity", "Enriching pinned repositories and collecting community health plus CI run history for top repositories.");
+  await safe(unavailable, "pinned-enrichment", null as null | Record<string, unknown>, async () => fetchPinnedEnrichment(client, graphql.pinnedItems));
+
+  const ciRepos = topRepos.slice(0, 5);
+  await mapConcurrentParallel(ciRepos, async (repo) => {
+    const profile = await safe(unavailable, `${repo.full_name}-community-profile`, null as null | { health_percentage?: number; files?: { pull_request_template?: unknown; code_of_conduct?: unknown; contributing?: unknown; issue_template?: unknown; license?: unknown; readme?: unknown } }, async () => (await fetchCommunityProfile(client, repo.owner.login, repo.name)).data);
+    if (!security[repo.full_name]) security[repo.full_name] = { sbomPackages: [], codeScanning: null, dependabot: null, codeScanningEnabled: false, dependabotEnabled: false, checks: [] };
+    if (profile) {
+      security[repo.full_name]!.communityHealth = typeof profile.health_percentage === "number" ? profile.health_percentage : null;
+      security[repo.full_name]!.pullRequestTemplatePresent = Boolean(profile.files?.pull_request_template);
+      if (qualities[repo.full_name]) {
+        qualities[repo.full_name]!.contributingPresent = qualities[repo.full_name]!.contributingPresent || Boolean(profile.files?.contributing);
+        qualities[repo.full_name]!.codeOfConductPresent = qualities[repo.full_name]!.codeOfConductPresent || Boolean(profile.files?.code_of_conduct);
+        qualities[repo.full_name]!.issueTemplatesPresent = qualities[repo.full_name]!.issueTemplatesPresent || Boolean(profile.files?.issue_template);
+        if (!qualities[repo.full_name]!.licensePresent && profile.files?.license) qualities[repo.full_name]!.licensePresent = true;
+      }
+    }
+    const runs = await safe(unavailable, `${repo.full_name}-actions-runs`, null as null | { workflow_runs?: Array<{ conclusion?: string | null }> }, async () => (await fetchActionsRuns(client, repo.owner.login, repo.name)).data);
+    if (runs?.workflow_runs) {
+      const completed = runs.workflow_runs.filter((run) => run.conclusion);
+      security[repo.full_name]!.actionsRuns = {
+        total: completed.length,
+        success: completed.filter((run) => run.conclusion === "success").length,
+      };
+    }
+  });
 
   emit("phase", "expensive-sampling", "Running bounded fork divergence comparisons.");
 

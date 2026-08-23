@@ -153,19 +153,6 @@ export function ChartsTab({ charts }: { charts: Record<string, ChartResult> }) {
       render: (val) => <LanguageRepoHeatmap data={val} />,
     },
     {
-      id: "4.27",
-      name: "Dependencies",
-      title: "Dependency Ecosystems",
-      render: (val) => (
-        <PieSimple
-          items={Array.isArray(val) ? (val as any[]).map((e: any) => ({
-            label: e.ecosystem,
-            value: e.value,
-          })) : []}
-        />
-      ),
-    },
-    {
       id: "4.15",
       name: "Star Distribution",
       title: "Star Distribution by Repository",
