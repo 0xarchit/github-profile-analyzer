@@ -32,4 +32,4 @@ export const fetchCommunityProfile = (client: GitHubClient, owner: string, repo:
   client.rest<{ health_percentage?: number; files?: Record<string, unknown> }>(`/repos/${encode(owner)}/${encode(repo)}/community/profile`, { label: `${owner}/${repo} community profile` });
 
 export const fetchActionsRuns = (client: GitHubClient, owner: string, repo: string) =>
-  client.rest<{ workflow_runs?: Array<{ conclusion?: string | null }> }>(`/repos/${encode(owner)}/${encode(repo)}/actions/runs?per_page=30`, { label: `${owner}/${repo} actions runs` });
+  client.rest<{ workflow_runs?: Array<{ conclusion?: string | null }> }>(`/repos/${encode(owner)}/${encode(repo)}/actions/runs?per_page=15`, { label: `${owner}/${repo} actions runs` });
