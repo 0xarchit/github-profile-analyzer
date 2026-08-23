@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, HelpCircle, Wrench } from "lucide-react";
 import type { InterpretationGrade, RuleResult, ScoreFactor, SignalResult, ChartResult } from "@/lib/deterministic";
 import { gradeColor } from "./helpers";
@@ -8,40 +9,92 @@ function FactorBar({ item }: { item: ScoreFactor }) {
   const pct = item.max > 0 ? Math.min(100, Math.max(0, (item.earned / item.max) * 100)) : 0;
   const color = pct >= 80 ? "#15803d" : pct >= 50 ? "#ca8a04" : "#e11d48";
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] font-heading text-black truncate">{item.label}</span>
-        <span className="text-[9px] text-gray-500 shrink-0">{Math.round(item.earned)}/{item.max}</span>
+        <span className="text-[11px] font-heading text-black truncate">{item.label}</span>
+        <span className="text-[11px] text-gray-500 shrink-0">{Math.round(item.earned)}/{item.max}</span>
       </div>
-      <div className="h-1 rounded-full" style={{ background: "rgba(0,0,0,0.1)" }}>
+      <div className="h-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.1)" }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <div className="text-[8px] text-gray-500">{item.detail}</div>
+      <div className="text-[10px] text-gray-500">{item.detail}</div>
     </div>
   );
 }
 
-export function FactorTooltip({ rule }: { rule: RuleResult }) {
+/**
+ * Same interaction model as the hero-page BETA VERSION banner:
+ * hover opens, hover-out closes instantly, click pins open,
+ * re-click or clicking anywhere else closes.
+ */
+export function FactorTooltip({ rule, className, style, children }: { rule: RuleResult; className?: string; style?: React.CSSProperties; children?: React.ReactNode }) {
+  const [openState, setOpenState] = useState<"hover" | "click" | null>(null);
+  const [align, setAlign] = useState<"left" | "right">("left");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const POPOVER_WIDTH = 336; // w-80 + border
+
+  // Flip anchoring to the right edge when the popover would overflow the viewport.
+  useLayoutEffect(() => {
+    if (!openState || !wrapRef.current) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const overflowsRight = rect.left + POPOVER_WIDTH > window.innerWidth - 8;
+    setAlign(overflowsRight ? "right" : "left");
+  }, [openState]);
+
+  useEffect(() => {
+    if (openState !== "click") return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpenState(null);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [openState]);
+
   const hasFactors = Boolean(rule.factors?.length);
+  const visible = openState !== null;
   return (
-    <div className="hidden group-hover:block focus-within:block absolute z-50 top-full left-0 mt-2 w-72 p-3 space-y-2 rounded-lg text-left" style={{ background: "#fffef5", border: "3px solid black", boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)" }} role="tooltip">
-      <div className="flex items-center gap-1.5">
-        <HelpCircle className="w-3 h-3 text-cyan-700 shrink-0" />
-        <span className="text-[9px] font-heading uppercase text-gray-500">Why this score</span>
-      </div>
-      <p className="text-[9px] text-gray-600">{rule.description}</p>
-      {hasFactors && (
-        <div className="space-y-1.5 pt-1">
-          {rule.factors!.map((item) => <FactorBar key={item.label} item={item} />)}
-        </div>
-      )}
-      {!hasFactors && (
-        <p className="text-[9px] text-gray-400 italic">No per-factor breakdown for this metric; see details on the Signals tab.</p>
-      )}
-      {rule.remediation && (
-        <div className="flex items-start gap-1.5 pt-1" style={{ borderTop: "2px solid black" }}>
-          <Wrench className="w-3 h-3 text-yellow-600 shrink-0 mt-0.5" />
-          <p className="text-[9px] text-yellow-700 font-semibold">How to improve: {rule.remediation}</p>
+    <div
+      ref={wrapRef}
+      className={`relative group ${className ?? ""}`}
+      style={style}
+      onMouseEnter={() => { if (openState !== "click") setOpenState("hover"); }}
+      onMouseLeave={() => { if (openState !== "click") setOpenState(null); }}
+      onClick={(e) => { e.stopPropagation(); setOpenState(openState === "click" ? null : "click"); }}
+    >
+      {children}
+      {visible && (
+        <div
+          ref={popRef}
+          className={`absolute z-50 top-full mt-2 w-80 max-w-[calc(100vw-16px)] p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${align === "right" ? "right-0" : "left-0"}`}
+          style={{ background: "#fffef5", border: "3px solid black", boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)" }}
+          role="tooltip"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <HelpCircle className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
+              <span className="text-[11px] font-heading uppercase text-gray-500">Why this score</span>
+            </div>
+            {openState === "click" && <span className="text-[8px] font-heading uppercase px-1 py-0.5 bg-neo-yellow border border-black">pinned</span>}
+          </div>
+          <p className="text-[11px] text-gray-600 leading-relaxed">{rule.description}</p>
+          {hasFactors ? (
+            <div className="space-y-2 pt-1">
+              {rule.factors!.map((item) => <FactorBar key={item.label} item={item} />)}
+            </div>
+          ) : (
+            <p className="text-[10px] text-gray-400 italic">No per-factor breakdown for this metric; see details on the Signals tab.</p>
+          )}
+          {rule.remediation && (
+            <div className="flex items-start gap-1.5 pt-2" style={{ borderTop: "2px solid black" }}>
+              <Wrench className="w-3.5 h-3.5 text-yellow-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-yellow-700 font-semibold leading-snug">How to improve: {rule.remediation}</p>
+            </div>
+          )}
+          {openState === "click" && (
+            <p className="text-[8px] text-gray-400 uppercase font-heading pt-1">Click outside to close</p>
+          )}
         </div>
       )}
     </div>
@@ -49,21 +102,38 @@ export function FactorTooltip({ rule }: { rule: RuleResult }) {
 }
 
 export function ScoreCard({ label, value, weight, grade, rule }: { label: string; value: number; weight: number; grade?: string; rule?: RuleResult }) {
-  return (
-    <div className="relative group rounded-xl p-3" style={{ background: "#e8e6d8", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }} tabIndex={0} aria-label={`${label}: ${typeof value === "number" ? value.toFixed(1) : value}. Hover or focus for breakdown.`}>
+  const card = (
+    <>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] font-heading uppercase text-gray-500 truncate">{label}</span>
+        <span className="text-[11px] font-heading uppercase text-gray-500 truncate">{label}</span>
         {grade && <span className="text-[10px] font-heading" style={{ color: gradeColor(grade) }}>{grade}</span>}
       </div>
-      <div className="text-xl font-heading text-black">{typeof value === "number" ? value.toFixed(1) : value}</div>
+      <div className="text-2xl font-heading text-black">{typeof value === "number" ? value.toFixed(1) : value}</div>
       <div className="flex items-center gap-2 mt-1">
-        <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(0,0,0,0.12)" }}>
+        <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.12)" }}>
           <div className="h-full rounded-full bg-cyan-700" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
         </div>
         <span className="text-[9px] text-gray-400">{(weight * 100).toFixed(0)}%</span>
       </div>
-      {rule && <FactorTooltip rule={rule} />}
-    </div>
+    </>
+  );
+  if (!rule) {
+    return (
+      <div className="rounded-xl p-3 cursor-default" style={{ background: "#e8e6d8", border: "3px solid black", boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)' }} tabIndex={0} aria-label={`${label}: ${typeof value === "number" ? value.toFixed(1) : value}`}>
+        {card}
+      </div>
+    );
+  }
+  return (
+    <FactorTooltip
+      rule={rule}
+      className="rounded-xl p-3 cursor-pointer"
+      style={{ background: "#e8e6d8", border: "3px solid black", boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)" }}
+    >
+      <div aria-label={`${label}: ${typeof value === "number" ? value.toFixed(1) : value}. Hover for breakdown, click to pin.`}>
+        {card}
+      </div>
+    </FactorTooltip>
   );
 }
 

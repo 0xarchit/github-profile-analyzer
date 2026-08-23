@@ -51,7 +51,7 @@ query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!, $p
     starredRepositories { totalCount }
     sponsoring(first: 10) {
       totalCount
-      nodes { ... on User { login } ... on Organization { login } }
+      nodes { ... on User { login } }
     }
     sponsors(first: 1) { totalCount }
     repositoriesContributedTo(first: 1, includeUserRepositories: false) { totalCount }
