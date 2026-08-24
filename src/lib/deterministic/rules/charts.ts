@@ -382,48 +382,50 @@ export const rule4_32OrgTimeline: ChartRule = (data) => {
   return chart(ok("4.32", "Organization membership timeline", events, "Best-effort public organization membership changes between local analyses.", "public orgs + internal snapshots"), "timeline");
 };
 
-export const chartRules: ChartRule[] = [
-  rule4_1ContributionCalendar,
-  rule4_2CommitActivity,
-  rule4_3CodeFrequency,
-  rule4_4PunchCard,
-  rule4_5LanguageDistribution,
-  rule4_6RepoSizeStars,
-  rule4_7StreakTimeline,
-  rule4_8BurstOverlay,
-  rule4_9PrIssueFunnel,
-  rule4_10CollaboratorNetwork,
-  rule4_11RepoCreationTimeline,
-  rule4_12WeekendSplit,
-  rule4_13ScoreRadar,
-  rule4_14LeaderboardPercentiles,
-  rule4_15CumulativeStars,
-  rule4_16StarVelocity,
-  rule4_17PrMergeHistogram,
-  rule4_18IssueResponseHistogram,
-  rule4_19CommitSizeHistogram,
-  rule4_20ContributionSplit,
-  rule4_21CommitHourUtcAware,
-  rule4_22EventMix,
-  rule4_23FollowerGrowth,
-  rule4_24ReleaseStarOverlay,
-  rule4_25TrafficViews,
-  rule4_26TrafficReferrers,
-  rule4_28SecuritySeverities,
-  rule4_29LorenzCurve,
-  rule4_30RepoLifetimeGantt,
-  rule4_31LanguageRepoHeatmap,
-  rule4_32OrgTimeline,
+// Explicit ID pairs keep fallback error IDs stable when rules are added or removed.
+const CHART_RULE_ENTRIES: Array<[string, ChartRule]> = [
+  ["4.1", rule4_1ContributionCalendar],
+  ["4.2", rule4_2CommitActivity],
+  ["4.3", rule4_3CodeFrequency],
+  ["4.4", rule4_4PunchCard],
+  ["4.5", rule4_5LanguageDistribution],
+  ["4.6", rule4_6RepoSizeStars],
+  ["4.7", rule4_7StreakTimeline],
+  ["4.8", rule4_8BurstOverlay],
+  ["4.9", rule4_9PrIssueFunnel],
+  ["4.10", rule4_10CollaboratorNetwork],
+  ["4.11", rule4_11RepoCreationTimeline],
+  ["4.12", rule4_12WeekendSplit],
+  ["4.13", rule4_13ScoreRadar],
+  ["4.14", rule4_14LeaderboardPercentiles],
+  ["4.15", rule4_15CumulativeStars],
+  ["4.16", rule4_16StarVelocity],
+  ["4.17", rule4_17PrMergeHistogram],
+  ["4.18", rule4_18IssueResponseHistogram],
+  ["4.19", rule4_19CommitSizeHistogram],
+  ["4.20", rule4_20ContributionSplit],
+  ["4.21", rule4_21CommitHourUtcAware],
+  ["4.22", rule4_22EventMix],
+  ["4.23", rule4_23FollowerGrowth],
+  ["4.24", rule4_24ReleaseStarOverlay],
+  ["4.25", rule4_25TrafficViews],
+  ["4.26", rule4_26TrafficReferrers],
+  ["4.28", rule4_28SecuritySeverities],
+  ["4.29", rule4_29LorenzCurve],
+  ["4.30", rule4_30RepoLifetimeGantt],
+  ["4.31", rule4_31LanguageRepoHeatmap],
+  ["4.32", rule4_32OrgTimeline],
 ];
+
+export const chartRules: ChartRule[] = CHART_RULE_ENTRIES.map(([, rule]) => rule);
 
 export const runChartRules = (data: EngineData, scores: ScoresOutput) =>
   Object.fromEntries(
-    chartRules.map((rule, idx) => {
+    CHART_RULE_ENTRIES.map(([ruleId, rule]) => {
       try {
         const result = rule(data, scores);
         return [result.id, result];
       } catch (err) {
-        const ruleId = `4.${idx + 1}`;
         return [
           ruleId,
           chart(

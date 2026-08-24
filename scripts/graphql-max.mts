@@ -1,35 +1,6 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { loadEnv, pickToken } from "./lib/script-env";
 
 type QueryResult = Record<string, unknown>;
-
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    try {
-      const content = readFileSync(resolve(process.cwd(), file), "utf8");
-      for (const line of content.split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-        if (m && process.env[m[1]] === undefined) {
-          process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-        }
-      }
-    } catch {}
-  }
-}
-
-function pickToken(): string {
-  const direct = process.env.GITHUB_TOKEN?.trim();
-  if (direct) return direct;
-  for (const key of ["GITHUB_TOKENS", "GITHUB_PAT_TOKENS"]) {
-    const first = (process.env[key] || "")
-      .split(",")
-      .map((t) => t.trim())
-      .find(Boolean);
-    if (first) return first;
-  }
-  console.error("No token found. Set GITHUB_TOKEN or GITHUB_TOKENS in .env");
-  process.exit(1);
-}
 
 loadEnv();
 const token = pickToken();
@@ -137,7 +108,7 @@ const REPO_ENRICH_BATCH = (repos: RepoLite[], offset: number) => `query {
     githubDir: object(expression:"HEAD:.github") { ... on Tree { entries { name } } }
     contributing: object(expression:"HEAD:CONTRIBUTING.md") { ... on Blob { byteSize } }
     coc: object(expression:"HEAD:CODE_OF_CONDUCT.md") { ... on Blob { byteSize } }
-    security: object(expression:"HEAD:SECURITY.md") { ... on Blob { byteSize } }
+    securityPolicy: object(expression:"HEAD:SECURITY.md") { ... on Blob { byteSize } }
     funding: object(expression:"HEAD:.github/FUNDING.yml") { ... on Blob { byteSize } }
     templates: object(expression:"HEAD:.github/ISSUE_TEMPLATE") { ... on Tree { entries { name } } }
     workflows: object(expression:"HEAD:.github/workflows") { ... on Tree { entries { name } } }
@@ -173,7 +144,7 @@ interface EnrichedRepo {
 
 async function probe1AllInOne(repos: RepoLite[]) {
   console.log("[1] USER-CORE + REPO-BATCH(4): enriched repos incl. readme text + history(100) + commit sizes + signatures");
-  const picks = repos.filter(() => true).slice(0, 8);
+  const picks = repos.slice(0, 8);
   if (picks.length === 0) return;
   await gqlRaw(USER_CORE, { login: username }, "user-core");
   for (let off = 0; off < picks.length; off += 4) {

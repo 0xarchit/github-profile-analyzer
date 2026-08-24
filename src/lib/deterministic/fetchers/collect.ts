@@ -21,6 +21,7 @@ interface RepoBatchGqlNode {
   recentForks?: {
     nodes?: Array<{
       name?: string;
+      owner?: { login?: string } | null;
       pushedAt?: string | null;
       stargazerCount?: number;
       forkCount?: number;
@@ -78,7 +79,7 @@ const weekStartSec = (iso: string): number | null => {
   return sundayUtc / 1_000;
 };
 
-function deriveWeeklySeries(commits: HistoryNodeLite[]) {
+function deriveWeeklySeries(commits: HistoryNodeLite[], ownerLogin: string) {
   const weekly = new Map<number, { total: number; days: number[]; owner: number }>();
   const frequency = new Map<number, { additions: number; deletions: number }>();
   for (const commit of commits) {
@@ -89,6 +90,9 @@ function deriveWeeklySeries(commits: HistoryNodeLite[]) {
     const day = new Date(commit.committedDate).getUTCDay();
     entry.total += 1;
     entry.days[day] = (entry.days[day] ?? 0) + 1;
+    if ((commit.author?.user?.login ?? "").toLowerCase() === ownerLogin.toLowerCase()) {
+      entry.owner += 1;
+    }
     weekly.set(week, entry);
     const freq = frequency.get(week) ?? { additions: 0, deletions: 0 };
     freq.additions += Math.max(0, commit.additions ?? 0);
@@ -166,10 +170,6 @@ const repoRank = (repo: GitHubRepo, now: Date) => {
   return Math.log1p(repo.stargazers_count) * 18 + Math.log1p(repo.forks_count) * 10 + Math.log1p(repo.size) + recencyBoost;
 };
 
-
-async function mapConcurrentParallel<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
-  await Promise.all(items.map((item) => fn(item)));
-}
 
 interface PinnedItem { nameWithOwner: string }
 
@@ -260,10 +260,9 @@ interface RepoListGqlNode {
   repositoryTopics?: { nodes?: Array<{ topic?: { name?: string } }> };
 }
 
-const mapRepoListNode = (node: RepoListGqlNode): GitHubRepo | null => {
+const mapRepoListNode = (node: RepoListGqlNode, ownerLogin: string): GitHubRepo | null => {
   if (!node.name || node.isPrivate) return null;
-  const ownerLogin = "";
-  const fullName = ownerLogin ? `${ownerLogin}/${node.name}` : node.name;
+  const fullName = `${ownerLogin}/${node.name}`;
   return {
     id: hashNodeId(node.id ?? fullName),
     name: node.name,
@@ -340,11 +339,8 @@ async function fetchAllRepos(client: GitHubClient, username: string, unavailable
       if (!connection) break;
       for (const node of connection.nodes) {
         if (!node) continue;
-        const mapped = mapRepoListNode({ ...node });
+        const mapped = mapRepoListNode({ ...node }, username);
         if (mapped) {
-          mapped.full_name = `${username}/${mapped.name}`;
-          mapped.owner = { login: username };
-          mapped.html_url = `https://github.com/${username}/${mapped.name}`;
           repos.push(mapped);
         }
       }
@@ -537,7 +533,7 @@ export async function collectEngineData(
     ...ranked.filter((repo) => repo.fork && !repo.disabled),
   ].slice(0, profile.repositoryLimit);
 
-  emit("phase", "public-activity", "Collecting a 90-day event window, organizations, gists, subscriptions, and search totals.");
+  emit("phase", "public-activity", "Collecting up to 300 public events from the last 30 days, plus organizations, gists, subscriptions, and search totals.");
   const [eventsP1, eventsP2, eventsP3, orgs, gists, subscriptions, search] = await Promise.all([
     safe(unavailable, "events", [], async () => (await fetchPublicEventsPage(client, username, 1)).data),
     safe(unavailable, "events-page-2", [], async () => (await fetchPublicEventsPage(client, username, 2)).data),
@@ -623,7 +619,7 @@ export async function collectEngineData(
               }
               docsDir: object(expression: "HEAD:docs") { ... on Tree { entries { name } } }
               recentForks: forks(first: 30, orderBy: {field: CREATED_AT, direction: DESC}) {
-                nodes { name pushedAt stargazerCount forkCount createdAt updatedAt }
+                nodes { name owner { login } pushedAt stargazerCount forkCount createdAt updatedAt }
               }
               defaultBranchRef {
                 target {
@@ -726,7 +722,7 @@ export async function collectEngineData(
             commitDetails[`${key}:${cn.oid}`] = toCommit(cn);
           }
 
-          const derived = deriveWeeklySeries(commitNodes);
+          const derived = deriveWeeklySeries(commitNodes, username);
           commitActivity[key] = derived.commitActivity;
           codeFrequency[key] = derived.codeFrequency;
           participation[key] = derived.participation;
@@ -736,8 +732,8 @@ export async function collectEngineData(
           forks[key] = (d.recentForks?.nodes ?? []).map((fork) => ({
             id: hashNodeId(`${key}:${fork.name}`),
             name: fork.name ?? "",
-            full_name: `${key}/${fork.name}`,
-            html_url: `https://github.com/${key}/${fork.name}`,
+            full_name: `${fork.owner?.login ?? key.split("/")[0]}/${fork.name}`,
+            html_url: `https://github.com/${fork.owner?.login ?? key.split("/")[0]}/${fork.name}`,
             description: null,
             fork: true,
             forks_count: fork.forkCount ?? 0,
@@ -760,7 +756,7 @@ export async function collectEngineData(
             default_branch: "main",
             license: null,
             mirror_url: null,
-            owner: { login: key.split("/")[0] ?? "" },
+            owner: { login: fork.owner?.login ?? key.split("/")[0] ?? "" },
           }));
 
           security[key] = {
@@ -770,7 +766,7 @@ export async function collectEngineData(
             codeScanningEnabled: false,
             dependabotEnabled: false,
             headCiState: d.defaultBranchRef?.target?.statusCheckRollup?.state ?? null,
-            checks: (qualities[key]?.ciPresent ? [{ conclusion: "success", status: "completed" }] : []) as SecuritySummary["checks"],
+            checks: [] as SecuritySummary["checks"],
             dependencyManifests: rootEntries.reduce<Record<string, number>>((counts, entry) => {
               const name = entry.name ?? "";
               for (const [pattern, ecosystem] of DEPENDENCY_MANIFEST_MATCHERS) {
@@ -813,17 +809,17 @@ export async function collectEngineData(
   await safe(unavailable, "pinned-enrichment", null as null | Record<string, unknown>, async () => fetchPinnedEnrichment(client, graphql.pinnedItems));
 
   const ciRepos = topRepos.slice(0, 5);
-  await mapConcurrentParallel(ciRepos, async (repo) => {
-    const profile = await safe(unavailable, `${repo.full_name}-community-profile`, null as null | { health_percentage?: number; files?: { pull_request_template?: unknown; code_of_conduct?: unknown; contributing?: unknown; issue_template?: unknown; license?: unknown; readme?: unknown } }, async () => (await fetchCommunityProfile(client, repo.owner.login, repo.name)).data);
+  await Promise.all(ciRepos.map(async (repo) => {
+    const communityProfile = await safe(unavailable, `${repo.full_name}-community-profile`, null as null | { health_percentage?: number; files?: { pull_request_template?: unknown; code_of_conduct?: unknown; contributing?: unknown; issue_template?: unknown; license?: unknown; readme?: unknown } }, async () => (await fetchCommunityProfile(client, repo.owner.login, repo.name)).data);
     if (!security[repo.full_name]) security[repo.full_name] = { sbomPackages: [], codeScanning: null, dependabot: null, codeScanningEnabled: false, dependabotEnabled: false, checks: [] };
-    if (profile) {
-      security[repo.full_name]!.communityHealth = typeof profile.health_percentage === "number" ? profile.health_percentage : null;
-      security[repo.full_name]!.pullRequestTemplatePresent = Boolean(profile.files?.pull_request_template);
+    if (communityProfile) {
+      security[repo.full_name]!.communityHealth = typeof communityProfile.health_percentage === "number" ? communityProfile.health_percentage : null;
+      security[repo.full_name]!.pullRequestTemplatePresent = Boolean(communityProfile.files?.pull_request_template);
       if (qualities[repo.full_name]) {
-        qualities[repo.full_name]!.contributingPresent = qualities[repo.full_name]!.contributingPresent || Boolean(profile.files?.contributing);
-        qualities[repo.full_name]!.codeOfConductPresent = qualities[repo.full_name]!.codeOfConductPresent || Boolean(profile.files?.code_of_conduct);
-        qualities[repo.full_name]!.issueTemplatesPresent = qualities[repo.full_name]!.issueTemplatesPresent || Boolean(profile.files?.issue_template);
-        if (!qualities[repo.full_name]!.licensePresent && profile.files?.license) qualities[repo.full_name]!.licensePresent = true;
+        qualities[repo.full_name]!.contributingPresent = qualities[repo.full_name]!.contributingPresent || Boolean(communityProfile.files?.contributing);
+        qualities[repo.full_name]!.codeOfConductPresent = qualities[repo.full_name]!.codeOfConductPresent || Boolean(communityProfile.files?.code_of_conduct);
+        qualities[repo.full_name]!.issueTemplatesPresent = qualities[repo.full_name]!.issueTemplatesPresent || Boolean(communityProfile.files?.issue_template);
+        if (!qualities[repo.full_name]!.licensePresent && communityProfile.files?.license) qualities[repo.full_name]!.licensePresent = true;
       }
     }
     const runs = await safe(unavailable, `${repo.full_name}-actions-runs`, null as null | { workflow_runs?: Array<{ conclusion?: string | null }> }, async () => (await fetchActionsRuns(client, repo.owner.login, repo.name)).data);
@@ -834,7 +830,7 @@ export async function collectEngineData(
         success: completed.filter((run) => run.conclusion === "success").length,
       };
     }
-  });
+  }));
 
   emit("phase", "expensive-sampling", "Running bounded fork divergence comparisons.");
 

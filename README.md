@@ -77,7 +77,7 @@ All results stream to the dashboard over Server-Sent Events so you can watch eac
 
 ### Prerequisites
 
-- Node.js 20+ (npm)
+- Node.js 22+ (npm)
 - A GitHub OAuth application (client id and secret)
 - GitHub personal access tokens for the analysis pool
 - Neon PostgreSQL database
@@ -99,7 +99,7 @@ Create a `.env.local` file:
 |---|---|
 | `GITHUB_TOKENS` | Comma-separated token pool used for analysis |
 | `GITHUB_PAT_TOKENS` | Optional secondary PAT pool |
-| `DATABASE_WRITE` / `DATABASE_READ` | Neon PostgreSQL connection strings |
+| `DATABASE_WRITE` | Neon PostgreSQL connection string |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth application credentials |
 | `JWT_SECRET` | Session signing key |
 | `ENCRYPTION_SECRET` | AES-256-GCM encryption key |
@@ -146,7 +146,7 @@ npm run start
 
 ## Project Structure
 
-```
+```text
 src/
 ├── app/                 # App Router pages and API routes
 ├── components/          # Dashboard UI and charts

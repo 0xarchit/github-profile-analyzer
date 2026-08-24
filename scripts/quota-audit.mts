@@ -1,33 +1,4 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
-
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    try {
-      const content = readFileSync(resolve(process.cwd(), file), "utf8");
-      for (const line of content.split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-        if (m && process.env[m[1]] === undefined) {
-          process.env[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
-        }
-      }
-    } catch {}
-  }
-}
-
-function pickToken(): string {
-  const direct = process.env.GITHUB_TOKEN?.trim();
-  if (direct) return direct;
-  for (const key of ["GITHUB_TOKENS", "GITHUB_PAT_TOKENS"]) {
-    const first = (process.env[key] || "")
-      .split(",")
-      .map((t) => t.trim())
-      .find(Boolean);
-    if (first) return first;
-  }
-  console.error("No token found. Set GITHUB_TOKEN or GITHUB_TOKENS in .env");
-  process.exit(1);
-}
+import { loadEnv, pickToken } from "./lib/script-env";
 
 loadEnv();
 const token = pickToken();
@@ -82,7 +53,7 @@ async function gql<T>(query: string, variables: Record<string, unknown>, label: 
   return { data: body.data ?? null, errors };
 }
 
-interface RepoLite { name: string; ownerLogin: string; stars: number; forks: number; pushedAt: string; isFork: boolean; }
+interface RepoLite { name: string; ownerLogin: string; stars: number; forks: number; pushedAt: string; isFork: boolean; parent?: { nameWithOwner: string; defaultBranch: string }; }
 
 async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }> {
   console.log("\n[repo-list] paginated GraphQL repository discovery");
@@ -90,24 +61,34 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }
   let cursor: string | null = null;
   let pagesUsed = 0;
   for (let page = 1; page <= 3; page += 1) {
-    const gqlRes = await gql<{ user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean }> } } | null }>(
+    const gqlRes = await gql<{ user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean; defaultBranchRef?: { name?: string } | null; parent?: { nameWithOwner?: string; defaultBranchRef?: { name?: string } | null } | null }> } | null } | null }>(
       `query($login:String!,$cursor:String) {
         user(login:$login) {
           repositories(first:100, after:$cursor, ownerAffiliations:[OWNER], orderBy:{field:PUSHED_AT, direction:DESC}) {
             pageInfo { hasNextPage endCursor }
-            nodes { name owner { login } stargazerCount forkCount pushedAt isFork isPrivate }
+            nodes { name owner { login } stargazerCount forkCount pushedAt isFork isPrivate defaultBranchRef { name } parent { nameWithOwner defaultBranchRef { name } } }
           }
         }
       }`,
       { login: username, cursor },
       `repo-list-p${page}`,
     );
-    const data = gqlRes.data as { user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean }> } | null } | null };
+    const data = gqlRes.data as { user: null | { repositories: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<null | { name: string; owner: { login: string }; stargazerCount: number; forkCount: number; pushedAt: string; isFork: boolean; isPrivate?: boolean; defaultBranchRef?: { name?: string } | null; parent?: { nameWithOwner?: string; defaultBranchRef?: { name?: string } | null } | null }> } | null } | null };
     pagesUsed = page;
     const conn = data?.user?.repositories;
     if (!conn) break;
     for (const n of conn.nodes) {
-      if (n && !n.isFork && !n.isPrivate) repos.push({ name: n.name, ownerLogin: n.owner.login, stars: n.stargazerCount, forks: n.forkCount, pushedAt: n.pushedAt, isFork: Boolean(n.isFork) });
+      if (n && !n.isFork && !n.isPrivate) repos.push({
+        name: n.name,
+        ownerLogin: n.owner.login,
+        stars: n.stargazerCount,
+        forks: n.forkCount,
+        pushedAt: n.pushedAt,
+        isFork: Boolean(n.isFork),
+        parent: n.parent?.nameWithOwner && n.parent.defaultBranchRef?.name
+          ? { nameWithOwner: n.parent.nameWithOwner, defaultBranch: n.parent.defaultBranchRef.name }
+          : undefined,
+      });
     }
     if (!conn.pageInfo.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
@@ -255,6 +236,7 @@ async function probeSearchMegaV3(): Promise<void> {
 }
 
 async function probeIssueBatch(repos: RepoLite[]): Promise<void> {
+  if (repos.length === 0) return;
   console.log("\n[issue-batch] response latency + labels (tier A) in ONE request");
   const vars: Record<string, unknown> = {};
   const fields = repos
@@ -276,14 +258,13 @@ async function probeIssueBatch(repos: RepoLite[]): Promise<void> {
   await gql(`query IssueBatch(${decls}) { ${fields} }`, vars, "issue-batch-all-repos");
 }
 
-async function probeAuthoredIssueResponses(searchResult: { issuesAuthored?: number }): Promise<void> {
+async function probeAuthoredIssueResponses(): Promise<void> {
   console.log("\n[authored-issue-responses] one batched request (up to 25 aliases)");
   const { data } = await gql<{ searchIssues?: { nodes?: Array<{ number: number; repository: { nameWithOwner: string } }> } }>(
     `query($q:String!) { searchIssues: search(query:$q, type:ISSUE, first:25) { nodes { ... on Issue { number repository { nameWithOwner } } } } }`,
     { q: `author:${username} type:issue` },
     "authored-issues-fetch",
   );
-  void searchResult;
   const items = (data?.searchIssues?.nodes ?? []).slice(0, 25);
   if (!items.length) return;
   const vars: Record<string, unknown> = {};
@@ -338,8 +319,12 @@ async function probeRestAddons(repos: RepoLite[], forks: RepoLite[]): Promise<nu
     await rest(`https://api.github.com/repos/${repos[i]!.ownerLogin}/${repos[i]!.name}/actions/runs?per_page=20`, `actions-runs ${repos[i]!.name} (tier C)`);
   }
   let forkReqUsed = 0;
-  for (const fork of forks.slice(0, FORK_COMPARE_LIMIT)) {
-    await rest(`https://api.github.com/repos/${fork.ownerLogin}/${fork.name}/compare/main...${username}:main`, `fork-compare ${fork.name}`);
+  const comparableForks = forks.filter((f) => f.parent);
+  for (const fork of comparableForks.slice(0, FORK_COMPARE_LIMIT)) {
+    const [parentOwner, parentName] = fork.parent!.nameWithOwner.split("/");
+    if (!parentOwner || !parentName) continue;
+    const head = `${username}:${fork.parent!.defaultBranch}`;
+    await rest(`https://api.github.com/repos/${parentOwner}/${parentName}/compare/${fork.parent!.defaultBranch}...${head}`, `fork-compare ${fork.ownerLogin}/${fork.name}`);
     forkReqUsed += 1;
   }
   return forkReqUsed;
@@ -357,14 +342,14 @@ async function main() {
   await probeSearchMegaV3();
   await probeIssueBatch(repos);
   await probePinnedEnrichment();
-  await probeAuthoredIssueResponses({});
+  await probeAuthoredIssueResponses();
 
-  const forksOfOwn = repos.filter((r) => r.forks > 0).sort((a, b) => b.forks - a.forks);
-  const forkReqUsed = await probeRestAddons(repos, forksOfOwn);
+  const contributedForks = repos.filter((r) => r.isFork);
+  const forkReqUsed = await probeRestAddons(repos, contributedForks);
 
   const totalThisRun = restUsed + gqlUsed;
   const unspentRepoPages = Math.max(0, 3 - pagesUsed);
-  const unspentForkCompares = Math.max(0, FORK_COMPARE_LIMIT * 2 - forkReqUsed);
+  const unspentForkCompares = Math.max(0, FORK_COMPARE_LIMIT - forkReqUsed);
   const worstCase = totalThisRun + unspentRepoPages + unspentForkCompares;
 
   console.log(`\n══════════════ QUOTA AUDIT ══════════════`);

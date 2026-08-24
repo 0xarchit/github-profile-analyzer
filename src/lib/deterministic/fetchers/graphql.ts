@@ -40,6 +40,7 @@ query DeterministicProfile($login: String!, $from: DateTime!, $to: DateTime!, $p
     updatedAt
     avatarUrl
     url
+    isHireable
     followers { totalCount }
     following { totalCount }
     repositories { totalCount }
@@ -94,6 +95,7 @@ interface MainResponse {
     company: string | null;
     location: string | null;
     bio: string | null;
+    isHireable: boolean | null;
     websiteUrl: string | null;
     twitterUsername: string | null;
     createdAt: string;
@@ -187,7 +189,7 @@ export async function fetchProfileCore(client: GitHubClient, username: string, n
     following: u.following.totalCount,
     public_repos: u.repositories.totalCount,
     public_gists: 0,
-    hireable: null,
+    hireable: u.isHireable ?? null,
     blog: u.websiteUrl ?? "",
     location: u.location,
     company: u.company,

@@ -1,35 +1,6 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { loadEnv, pickToken } from "./lib/script-env";
 
 type QueryResult = Record<string, unknown>;
-
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    try {
-      const content = readFileSync(resolve(process.cwd(), file), "utf8");
-      for (const line of content.split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-        if (m && process.env[m[1]] === undefined) {
-          process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-        }
-      }
-    } catch {}
-  }
-}
-
-function pickToken(): string {
-  const direct = process.env.GITHUB_TOKEN?.trim();
-  if (direct) return direct;
-  for (const key of ["GITHUB_TOKENS", "GITHUB_PAT_TOKENS"]) {
-    const first = (process.env[key] || "")
-      .split(",")
-      .map((t) => t.trim())
-      .find(Boolean);
-    if (first) return first;
-  }
-  console.error("No token found. Set GITHUB_TOKEN or GITHUB_TOKENS in .env");
-  process.exit(1);
-}
 
 loadEnv();
 const token = pickToken();
@@ -47,7 +18,14 @@ async function gql(query: string, variables: Record<string, unknown> = {}, label
     },
     body: JSON.stringify({ query, variables }),
   });
-  const json = (await res.json()) as { data?: QueryResult; errors?: Array<{ message: string }> };
+  const text = await res.text();
+  let json: { data?: QueryResult; errors?: Array<{ message: string }> };
+  try {
+    json = JSON.parse(text);
+  } catch {
+    console.error(`  [${label}] HTTP ${res.status}, non-JSON response`);
+    return {};
+  }
   const ms = Date.now() - t0;
   if (json.errors?.length) {
     console.error(`  [${label}] GraphQL errors:`, json.errors.map((e) => e.message).join(" | "));
@@ -218,7 +196,8 @@ function deriveStats(historyNodes: HistoryNode[]) {
   for (const n of historyNodes) {
     if (!n.committedDate) continue;
     const d = new Date(n.committedDate);
-    const week = d.toISOString().slice(0, 10);
+    const weekStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - d.getUTCDay() * 86_400_000);
+    const week = weekStart.toISOString().slice(0, 10);
     weekly.set(week, (weekly.get(week) ?? 0) + 1);
     const pk = `${d.getUTCDay()}:${d.getUTCHours()}`;
     punch.set(pk, (punch.get(pk) ?? 0) + 1);
@@ -247,7 +226,7 @@ async function main() {
 
   if (!process.argv.includes("--skip-batch") && repos.length > 0) {
     console.log("\n[2/3] REPO_BATCH_V2 (aliased enrichment + community files, one request per 4 repos)");
-    const derived: ReturnType<typeof deriveStats>[] = [];
+    const derived: Array<{ label: string; stats: ReturnType<typeof deriveStats> }> = [];
     for (let i = 0; i < repos.length; i += 4) {
       const batch = repos.slice(i, i + 4);
       const data = await gql(REPO_BATCH_V2(batch, i), {}, `repo-batch-${i}`);
@@ -255,20 +234,19 @@ async function main() {
         const node = data[`repo_${i + j}`] as RepoBatchNode | undefined;
         if (!node) continue;
         const hist = node.defaultBranchRef?.target?.history?.nodes ?? [];
-        derived.push(deriveStats(hist));
+        derived.push({ label: `${batch[j].owner}/${batch[j].name}`, stats: deriveStats(hist) });
         const community = [
           node.contributing ? "CONTRIBUTING" : null,
           node.securityPolicy ? "SECURITY" : null,
-          node.githubDir ? undefined : null,
+          node.githubDir ? ".github" : null,
         ].filter(Boolean);
         console.log(`   ${batch[j].owner}/${batch[j].name}: license=${node.licenseInfo?.spdxId ?? "-"} readme=${node.readme?.byteSize ?? 0}B ci=${node.workflows ? "y" : "n"} community=[${community.join(",")}] discussions=${node.discussions?.totalCount ?? "?"}`);
       }
     }
     if (!process.argv.includes("--skip-derived") && derived.length > 0) {
       console.log("\n[derived] stats computed from already-fetched history (replaces /stats/* REST calls):");
-      for (let i = 0; i < derived.length; i++) {
-        const d = derived[i];
-        console.log(`   ${repos[i]?.name ?? i}: commits=${d.commits} authors=${d.distinctAuthors} top=${d.topAuthor} msgDiv=${d.messageDiversity.toFixed(2)} weeks=${d.activeWeeks} punchCells=${d.punchCells}`);
+      for (const { label, stats: d } of derived) {
+        console.log(`   ${label}: commits=${d.commits} authors=${d.distinctAuthors} top=${d.topAuthor} msgDiv=${d.messageDiversity.toFixed(2)} weeks=${d.activeWeeks} punchCells=${d.punchCells}`);
       }
     }
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, HelpCircle, Wrench } from "lucide-react";
 import type { InterpretationGrade, RuleResult, ScoreFactor, SignalResult, ChartResult } from "@/lib/deterministic";
 import { gradeColor } from "./helpers";
@@ -32,16 +32,15 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
   const [align, setAlign] = useState<"left" | "right">("left");
   const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  const tooltipId = useId();
 
   const POPOVER_WIDTH = 336; // w-80 + border
 
-  // Flip anchoring to the right edge when the popover would overflow the viewport.
-  useLayoutEffect(() => {
-    if (!openState || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const overflowsRight = rect.left + POPOVER_WIDTH > window.innerWidth - 8;
-    setAlign(overflowsRight ? "right" : "left");
-  }, [openState]);
+  const updateAlign = () => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setAlign(rect.left + POPOVER_WIDTH > window.innerWidth - 8 ? "right" : "left");
+  };
 
   useEffect(() => {
     if (openState !== "click") return;
@@ -52,21 +51,37 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [openState]);
 
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      updateAlign();
+      setOpenState((state) => (state === "click" ? null : "click"));
+    } else if (event.key === "Escape") {
+      setOpenState(null);
+    }
+  };
+
   const hasFactors = Boolean(rule.factors?.length);
   const visible = openState !== null;
   return (
     <div
       ref={wrapRef}
-      className={`relative group ${className ?? ""}`}
+      role="button"
+      tabIndex={0}
+      aria-expanded={openState === "click"}
+      aria-describedby={visible ? tooltipId : undefined}
+      className={`relative group cursor-pointer ${className ?? ""}`}
       style={style}
-      onMouseEnter={() => { if (openState !== "click") setOpenState("hover"); }}
+      onMouseEnter={() => { if (openState !== "click") { updateAlign(); setOpenState("hover"); } }}
       onMouseLeave={() => { if (openState !== "click") setOpenState(null); }}
-      onClick={(e) => { e.stopPropagation(); setOpenState(openState === "click" ? null : "click"); }}
+      onClick={(e) => { e.stopPropagation(); updateAlign(); setOpenState(openState === "click" ? null : "click"); }}
+      onKeyDown={onKeyDown}
     >
       {children}
       {visible && (
         <div
           ref={popRef}
+          id={tooltipId}
           className={`absolute z-50 top-full mt-2 w-80 max-w-[calc(100vw-16px)] p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${align === "right" ? "right-0" : "left-0"}`}
           style={{ background: "#fffef5", border: "3px solid black", boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)" }}
           role="tooltip"

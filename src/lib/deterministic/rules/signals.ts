@@ -449,12 +449,12 @@ export const rule3_41ExternalPrAcceptance: SignalRule = (data) => {
   const openedExternal = data.search.prsOpenedExternal;
   const mergedExternal = data.search.prsMergedExternal;
   const value = { openedExternal, mergedExternal, acceptanceRate: round(ratio(mergedExternal, Math.max(openedExternal, 1)), 4) };
-  return signal(ok("3.41", "External PR acceptance rate", value, `${value.acceptanceRate * 100}% of PRs opened against repositories you don't own were merged.`, "GraphQL search (author + is:merged qualifiers)"), false);
+  return signal(ok("3.41", "External PR acceptance rate", value, `${round(value.acceptanceRate * 100, 1)}% of PRs opened against repositories you don't own were merged.`, "GraphQL search (author + is:merged qualifiers)"), false);
 };
 
 export const rule3_42ConventionalCommitRatio: SignalRule = (data) => {
   const messages = allCommits(data).map(({ commit }) => commit.commit.message.trim().toLowerCase()).filter(Boolean);
-  const conventional = messages.filter((message) => /^(feat|fix|chore|docs|refactor|test|perf|build|ci|style)(\(|:)/.test(message)).length;
+  const conventional = messages.filter((message) => /^(feat|fix|chore|docs|refactor|test|perf|build|ci|style)(\([^)]*\))?!?:/.test(message)).length;
   const value = { sampled: messages.length, conventional, ratio: round(ratio(conventional, messages.length), 4) };
   return sampledSignal("3.42", "Conventional commit adherence", value, `${conventional} of ${messages.length} sampled commits follow Conventional Commits prefixes.`, "GraphQL default-branch history", false, messages.length, "At most 100 commits per sampled repository.");
 };
@@ -478,9 +478,13 @@ export const rule3_44CommitFocusProfile: SignalRule = (data) => {
 export const rule3_45ForkAbandonment: SignalRule = (data) => {
   const forks = data.repos.filter((repo) => repo.fork);
   const abandoned = forks
-    .filter((repo) => Boolean(repo.created_at && repo.pushed_at))
-    .map((repo) => ({ name: repo.full_name, createdAt: repo.created_at as string, pushedAt: repo.pushed_at as string }))
-    .filter((repo) => daysBetween(repo.createdAt, repo.pushedAt) < 7 && daysBetween(repo.createdAt, data.now) > 30)
+    .filter((repo) => Boolean(repo.created_at))
+    .map((repo) => ({ name: repo.full_name, createdAt: repo.created_at as string, pushedAt: repo.pushed_at }))
+    .filter((repo) => {
+      const ageDays = daysBetween(repo.createdAt, data.now);
+      if (!repo.pushedAt) return ageDays > 30;
+      return daysBetween(repo.createdAt, repo.pushedAt) < 7 && ageDays > 30;
+    })
     .map((repo) => repo.name);
   const value = { forks: forks.length, createdAndUntouched: abandoned.length, repositories: abandoned.slice(0, 10) };
   return sampledSignal("3.45", "Fork abandonment pattern", value, `${abandoned.length} forks were created and never pushed to after creation week.`, "repository metadata", forks.length >= 5 && abandoned.length / Math.max(forks.length, 1) > 0.8, forks.length, "Forks created for reading or issue-filing legitimately show no pushes.");
