@@ -65,7 +65,6 @@ interface HistoryNodeLite {
   authoredDate?: string;
   additions?: number;
   deletions?: number;
-  changedFiles?: number;
   author?: { user?: { login?: string } | null } | null;
   signature?: { isValid?: boolean } | null;
   parents?: { totalCount?: number } | null;
@@ -635,7 +634,6 @@ export async function collectEngineData(
                         authoredDate
                         additions
                         deletions
-                        changedFiles
                         author { user { login } }
                         signature { isValid }
                         parents(first: 1) { totalCount }

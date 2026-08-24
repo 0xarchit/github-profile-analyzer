@@ -328,7 +328,7 @@ async function probeRestAddons(repos: RepoLite[], forks: RepoLite[]): Promise<nu
   for (const fork of comparableForks.slice(0, FORK_COMPARE_LIMIT)) {
     const [parentOwner, parentName] = fork.parent!.nameWithOwner.split("/");
     if (!parentOwner || !parentName) continue;
-    const base = fork.parent!.defaultBranch;
+    const base = `${parentOwner}:${fork.parent!.defaultBranch}`;
     const head = `${username}:${fork.defaultBranch}`;
     if (base === head) continue;
     await rest(`https://api.github.com/repos/${parentOwner}/${parentName}/compare/${base}...${head}`, `fork-compare ${fork.ownerLogin}/${fork.name} (${base}...${head})`);

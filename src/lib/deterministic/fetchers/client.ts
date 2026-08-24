@@ -187,7 +187,7 @@ export class GitHubClient {
     const url = path.startsWith("http") ? path : `https://api.github.com${path}`;
     const requestHeaders = new Headers(options.headers);
     const acceptHeader = requestHeaders.get("accept") ?? "application/json";
-    const cacheKey = `rest:${this.tokenFingerprint}:${acceptHeader}:${url}`;
+    let cacheKey = `rest:${this.tokenFingerprint}:${acceptHeader}:${url}`;
     const useCache = options.cache ?? true;
 
     if (useCache) {
@@ -234,10 +234,11 @@ export class GitHubClient {
         const remaining = Number(response.headers.get("x-ratelimit-remaining") ?? "1");
         const retryAfter = Number(response.headers.get("retry-after") ?? "0");
         const shouldRetry403 = response.status === 403 && (remaining === 0 || retryAfter > 0);
-        const shouldRetry = response.status === 202 || response.status === 401 || response.status === 429 || shouldRetry403 || response.status === 502 || response.status === 504;
+        const canRotate = typeof this.tokenOrProvider === "function";
+        const shouldRetry = response.status === 202 || (response.status === 401 && canRotate) || response.status === 429 || shouldRetry403 || response.status === 502 || response.status === 504;
 
         if (attempt < retries && shouldRetry) {
-          if (response.status === 401 || response.status === 403 || response.status === 429) {
+          if ((response.status === 401 && canRotate) || response.status === 403 || response.status === 429) {
             this.rotateToken();
           }
           const delayMs = Math.max(retryAfter * 1_000, 600 * 2 ** attempt);
@@ -329,10 +330,11 @@ export class GitHubClient {
         const remaining = Number(response.headers.get("x-ratelimit-remaining") ?? "1");
         const retryAfter = Number(response.headers.get("retry-after") ?? "0");
         const shouldRetry403 = response.status === 403 && (remaining === 0 || retryAfter > 0);
-        const shouldRetry = response.status === 202 || response.status === 401 || response.status === 429 || shouldRetry403 || response.status === 502 || response.status === 504;
+        const canRotate = typeof this.tokenOrProvider === "function";
+        const shouldRetry = response.status === 202 || (response.status === 401 && canRotate) || response.status === 429 || shouldRetry403 || response.status === 502 || response.status === 504;
 
         if (attempt < retries && shouldRetry) {
-          if (response.status === 401 || response.status === 403 || response.status === 429) {
+          if ((response.status === 401 && canRotate) || response.status === 403 || response.status === 429) {
             this.rotateToken();
           }
           const delayMs = Math.max(retryAfter * 1_000, 600 * 2 ** attempt);
