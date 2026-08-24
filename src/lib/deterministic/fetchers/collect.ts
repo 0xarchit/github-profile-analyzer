@@ -125,7 +125,8 @@ function derivePunchCard(commits: HistoryNodeLite[]): Array<[number, number, num
 function deriveContributors(commits: HistoryNodeLite[], username: string): Array<{ login?: string; contributions: number }> {
   const counts = new Map<string, number>();
   for (const commit of commits) {
-    const login = commit.author?.user?.login ?? "(unlinked)";
+    const login = commit.author?.user?.login;
+    if (!login) continue;
     counts.set(login, (counts.get(login) ?? 0) + 1);
   }
   return [...counts.entries()]

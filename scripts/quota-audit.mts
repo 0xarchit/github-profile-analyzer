@@ -53,7 +53,7 @@ async function gql<T>(query: string, variables: Record<string, unknown>, label: 
   return { data: body.data ?? null, errors };
 }
 
-interface RepoLite { name: string; ownerLogin: string; stars: number; forks: number; pushedAt: string; isFork: boolean; parent?: { nameWithOwner: string; defaultBranch: string }; }
+interface RepoLite { name: string; ownerLogin: string; stars: number; forks: number; pushedAt: string; isFork: boolean; defaultBranch?: string; parent?: { nameWithOwner: string; defaultBranch: string }; }
 
 async function probeRepoList(): Promise<{ repos: RepoLite[]; forks: RepoLite[]; pagesUsed: number }> {
   console.log("\n[repo-list] paginated GraphQL repository discovery");
@@ -87,6 +87,7 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; forks: RepoLite[]; 
         forks: n.forkCount,
         pushedAt: n.pushedAt,
         isFork: Boolean(n.isFork),
+        defaultBranch: n.defaultBranchRef?.name || undefined,
         parent: n.parent?.nameWithOwner && n.parent.defaultBranchRef?.name
           ? { nameWithOwner: n.parent.nameWithOwner, defaultBranch: n.parent.defaultBranchRef.name }
           : undefined,
@@ -323,12 +324,14 @@ async function probeRestAddons(repos: RepoLite[], forks: RepoLite[]): Promise<nu
     await rest(`https://api.github.com/repos/${repos[i]!.ownerLogin}/${repos[i]!.name}/actions/runs?per_page=20`, `actions-runs ${repos[i]!.name} (tier C)`);
   }
   let forkReqUsed = 0;
-  const comparableForks = forks.filter((f) => f.parent);
+  const comparableForks = forks.filter((f) => f.parent && f.defaultBranch);
   for (const fork of comparableForks.slice(0, FORK_COMPARE_LIMIT)) {
     const [parentOwner, parentName] = fork.parent!.nameWithOwner.split("/");
     if (!parentOwner || !parentName) continue;
-    const head = `${username}:${fork.parent!.defaultBranch}`;
-    await rest(`https://api.github.com/repos/${parentOwner}/${parentName}/compare/${fork.parent!.defaultBranch}...${head}`, `fork-compare ${fork.ownerLogin}/${fork.name}`);
+    const base = fork.parent!.defaultBranch;
+    const head = `${username}:${fork.defaultBranch}`;
+    if (base === head) continue;
+    await rest(`https://api.github.com/repos/${parentOwner}/${parentName}/compare/${base}...${head}`, `fork-compare ${fork.ownerLogin}/${fork.name} (${base}...${head})`);
     forkReqUsed += 1;
   }
   return forkReqUsed;
