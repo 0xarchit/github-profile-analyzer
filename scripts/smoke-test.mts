@@ -44,9 +44,8 @@ for (const file of [".env.local", ".env"]) {
 // ─── Args ──────────────────────────────────────────────────────────────────────
 const mode = (process.argv[2] ?? "deep") as AnalysisMode;
 const username = process.argv[3] ?? "0xarchit";
-const validModes: AnalysisMode[] = ["quick", "standard", "deep"];
-if (!validModes.includes(mode)) {
-  console.error(`Invalid mode "${mode}". Use: quick | standard | deep`);
+if (mode !== "deep") {
+  console.error(`Invalid mode "${mode}". The engine now runs a single deep-dive mode.`);
   process.exit(1);
 }
 

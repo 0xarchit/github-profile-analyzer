@@ -8,7 +8,6 @@ import {
   mean,
   median,
   ok,
-  oauthOnly,
   ratio,
   round,
   sampled,
@@ -77,7 +76,7 @@ const rollingBursts = (data: EngineData) => {
 export const rule3_1CommitHourEntropy: SignalRule = (data) => {
   const buckets = punchBuckets(data);
   const value = { entropyBits: round(entropy(buckets), 3), normalized: round(ratio(entropy(buckets), Math.log2(168)), 4), commits: buckets.reduce((sum, count) => sum + count, 0) };
-  return signal(ok("3.1", "Commit-hour entropy", value, `Normalized hour entropy is ${value.normalized}; low values mean activity is concentrated in few weekly time slots.`, "GET /repos/{o}/{r}/stats/punch_card"), value.commits >= 30 && value.normalized < 0.3);
+  return signal(ok("3.1", "Commit-hour entropy", value, `Normalized hour entropy is ${value.normalized}; low values mean activity is concentrated in few weekly time slots.`, "derived from GraphQL commit timestamps"), value.commits >= 30 && value.normalized < 0.3);
 };
 
 export const rule3_2BurstDetection: SignalRule = (data) => {
@@ -218,13 +217,13 @@ export const rule3_14WeekendRatio: SignalRule = (data) => {
     // Weekend = Sunday (0–23) or Saturday (144–167).
     if (i < 24 || i >= 144) weekend += count;
   }
-  return signal(ok("3.14", "Weekend vs weekday ratio", { weekend, weekday: total - weekend, weekendRatio: round(ratio(weekend, total), 4) }, `${round(ratio(weekend, total) * 100, 1)}% of sampled punch-card activity is on weekends.`, "stats/punch_card"), false);
+  return signal(ok("3.14", "Weekend vs weekday ratio", { weekend, weekday: total - weekend, weekendRatio: round(ratio(weekend, total), 4) }, `${round(ratio(weekend, total) * 100, 1)}% of sampled punch-card activity is on weekends.`, "derived from GraphQL commit timestamps"), false);
 };
 
 export const rule3_15PeakProductivityWindow: SignalRule = (data) => {
   const buckets = punchBuckets(data);
   const peak = buckets.reduce((best, count, index) => count > best.count ? { index, count } : best, { index: 0, count: 0 });
-  return signal(ok("3.15", "Peak productivity window", { day: Math.floor(peak.index / 24), hour: peak.index % 24, commits: peak.count }, `Peak sampled slot is day ${Math.floor(peak.index / 24)}, hour ${peak.index % 24} UTC.`, "stats/punch_card"), false);
+  return signal(ok("3.15", "Peak productivity window", { day: Math.floor(peak.index / 24), hour: peak.index % 24, commits: peak.count }, `Peak sampled slot is day ${Math.floor(peak.index / 24)}, hour ${peak.index % 24} UTC.`, "derived from GraphQL commit timestamps"), false);
 };
 
 export const rule3_16CollaboratorNetwork: SignalRule = (data) => {
@@ -424,8 +423,12 @@ export const rule3_36ContributionConcentration: SignalRule = (data) => {
   return signal(ok("3.36", "Contribution concentration", value, `${round(value.ratio * 100, 1)}% of repository commit contributions are in the top repository.`, "GraphQL commitContributionsByRepository"), total >= 20 && value.ratio > 0.9);
 };
 
-export const rule3_37RestrictedContributionRatio: SignalRule = () =>
-  signal(oauthOnly("3.37", "Restricted contribution ratio", "GraphQL restrictedContributionsCount"), false);
+export const rule3_37RestrictedContributionRatio: SignalRule = (data) => {
+  const total = data.graphql.totalContributions;
+  const restricted = data.graphql.restrictedContributionsCount;
+  const value = { restricted, total, ratio: round(ratio(restricted, Math.max(total, 1)), 4) };
+  return sampledSignal("3.37", "Restricted contribution ratio", value, `${restricted} of ${total} contributions are private/restricted and only visible to the authenticated account.`, "GraphQL restrictedContributionsCount", false, total, "Counts include private contributions visible to the token; public viewers may see fewer.");
+};
 
 export const rule3_38MirrorRepos: SignalRule = (data) => {
   const repositories = data.repos.filter((repo) => repo.mirror_url).map((repo) => ({ repository: repo.full_name, mirrorUrl: repo.mirror_url }));
@@ -437,8 +440,55 @@ export const rule3_39OpenSourceCitizenship: SignalRule = (data) => {
   return signal(ok("3.39", "Open-source citizenship", { sampledExternalIssues: external.length, totalAuthoredIssues: data.search.issuesOpened, recentSampleShare: round(ratio(external.length, data.search.authoredIssues.length), 4) }, `${external.length} third-party issue reports appear in the first 100 authored-issue results.`, "GET /search/issues"), external.length > 0);
 };
 
-export const rule3_40DiscussionParticipation: SignalRule = () =>
-  signal(unavailable("3.40", "Discussions participation", "The researched user.repositoryDiscussionComments and ContributionsCollection discussion-comment count fields are not present in the live GitHub GraphQL schema. Repository-scoped discussion comments would require a separate, bounded crawl that cannot provide the claimed user-wide total.", "GitHub GraphQL live schema", "moderate"), false);
+export const rule3_40DiscussionParticipation: SignalRule = (data) => {
+  const discussions = data.search.discussionsAuthored;
+  return signal(ok("3.40", "Discussions participation", { authoredDiscussions: discussions }, `${discussions} authored GitHub Discussions found via the search index.`, "GraphQL search (type: DISCUSSION)"), false);
+};
+
+export const rule3_41ExternalPrAcceptance: SignalRule = (data) => {
+  const openedExternal = data.search.prsOpenedExternal;
+  const mergedExternal = data.search.prsMergedExternal;
+  const value = { openedExternal, mergedExternal, acceptanceRate: round(ratio(mergedExternal, Math.max(openedExternal, 1)), 4) };
+  return signal(ok("3.41", "External PR acceptance rate", value, `${round(value.acceptanceRate * 100, 1)}% of PRs opened against repositories you don't own were merged.`, "GraphQL search (author + is:merged qualifiers)"), false);
+};
+
+export const rule3_42ConventionalCommitRatio: SignalRule = (data) => {
+  const messages = allCommits(data).map(({ commit }) => commit.commit.message.trim().toLowerCase()).filter(Boolean);
+  const conventional = messages.filter((message) => /^(feat|fix|chore|docs|refactor|test|perf|build|ci|style)(\([^)]*\))?!?:/.test(message)).length;
+  const value = { sampled: messages.length, conventional, ratio: round(ratio(conventional, messages.length), 4) };
+  return sampledSignal("3.42", "Conventional commit adherence", value, `${conventional} of ${messages.length} sampled commits follow Conventional Commits prefixes.`, "GraphQL default-branch history", false, messages.length, "At most 100 commits per sampled repository.");
+};
+
+export const rule3_43MergeCommitRatio: SignalRule = (data) => {
+  const commits = allCommits(data);
+  const merges = commits.filter(({ commit }) => (commit.parents?.length ?? 0) > 1).length;
+  const value = { sampled: commits.length, mergeCommits: merges, ratio: round(ratio(merges, commits.length), 4) };
+  return sampledSignal("3.43", "Merge-commit ratio", value, `${merges} of ${commits.length} sampled commits are merge commits; high values suggest a branch-and-merge workflow.`, "GraphQL default-branch history", false, commits.length, "Default branch only; squashed-repo workflows show near-zero merge commits.");
+};
+
+export const rule3_44CommitFocusProfile: SignalRule = (data) => {
+  const sizes = Object.values(data.commitDetails).flatMap((commit) => (commit.stats ? [commit.stats.total] : []));
+  if (!sizes.length) return signal(unavailable("3.44", "Commit focus profile", "Per-commit changed-file counts were unavailable.", "GraphQL history nodes"), false);
+  const focused = sizes.filter((size) => size > 0 && size <= 200).length;
+  const sprawling = sizes.filter((size) => size > 1000).length;
+  const value = { sampled: sizes.length, focused, sprawling, focusedRatio: round(ratio(focused, sizes.length), 4) };
+  return signal(sampled("3.44", "Commit focus profile", value, `${Math.round(value.focusedRatio * 100)}% of sampled commits are focused changes of at most 200 lines.`, "GraphQL additions/deletions per commit", sizes.length, "Derived from the most recent 100 commits per sampled repository."), false);
+};
+
+export const rule3_45ForkAbandonment: SignalRule = (data) => {
+  const forks = data.repos.filter((repo) => repo.fork);
+  const abandoned = forks
+    .filter((repo) => Boolean(repo.created_at))
+    .map((repo) => ({ name: repo.full_name, createdAt: repo.created_at as string, pushedAt: repo.pushed_at }))
+    .filter((repo) => {
+      const ageDays = daysBetween(repo.createdAt, data.now);
+      if (!repo.pushedAt) return ageDays > 30;
+      return daysBetween(repo.createdAt, repo.pushedAt) < 7 && ageDays > 30;
+    })
+    .map((repo) => repo.name);
+  const value = { forks: forks.length, createdAndUntouched: abandoned.length, repositories: abandoned.slice(0, 10) };
+  return sampledSignal("3.45", "Fork abandonment pattern", value, `${abandoned.length} forks were created and never pushed to after creation week.`, "repository metadata", forks.length >= 5 && abandoned.length / Math.max(forks.length, 1) > 0.8, forks.length, "Forks created for reading or issue-filing legitimately show no pushes.");
+};
 
 export const signalRules: SignalRule[] = [
   rule3_1CommitHourEntropy,
@@ -481,6 +531,11 @@ export const signalRules: SignalRule[] = [
   rule3_38MirrorRepos,
   rule3_39OpenSourceCitizenship,
   rule3_40DiscussionParticipation,
+  rule3_41ExternalPrAcceptance,
+  rule3_42ConventionalCommitRatio,
+  rule3_43MergeCommitRatio,
+  rule3_44CommitFocusProfile,
+  rule3_45ForkAbandonment,
 ];
 
 export const runSignalRules = (data: EngineData) =>

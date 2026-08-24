@@ -8,18 +8,34 @@ interface RepoBatchGqlNode {
       releaseAssets?: { nodes?: Array<{ downloadCount?: number }> };
     }>;
   };
-  readme?: { byteSize?: number; text?: string };
-  ciWorkflows?: { entries?: Array<{ name?: string }> };
+  readme?: { byteSize?: number; text?: string } | null;
+  rootTree?: { entries?: Array<{ name?: string; type?: string }> } | null;
+  githubDir?: { entries?: Array<{ name?: string }> } | null;
+  contributing?: { byteSize?: number } | null;
+  codeOfConduct?: { byteSize?: number } | null;
+  securityPolicy?: { byteSize?: number } | null;
+  funding?: { byteSize?: number } | null;
+  issueTemplates?: { entries?: Array<{ name?: string }> } | null;
+  ciWorkflows?: { entries?: Array<{ name?: string }> } | null;
+  docsDir?: { entries?: Array<{ name?: string }> } | null;
+  recentForks?: {
+    nodes?: Array<{
+      name?: string;
+      owner?: { login?: string } | null;
+      pushedAt?: string | null;
+      stargazerCount?: number;
+      forkCount?: number;
+      createdAt?: string;
+      updatedAt?: string;
+    }>;
+  } | null;
   defaultBranchRef?: {
     name?: string;
     target?: {
+      statusCheckRollup?: { state?: string } | null;
       history?: {
-        nodes?: Array<{
-          oid: string;
-          message?: string;
-          committedDate?: string;
-          author?: { user?: { login?: string } };
-        }>;
+        totalCount?: number;
+        nodes?: HistoryNodeLite[];
       };
     };
   };
@@ -29,44 +45,93 @@ import type { AnalysisModeProfile, AnalysisProgressCallback, EngineData, GitHubC
 import { GitHubClient, GitHubRequestError, UserNotFoundError } from "./client";
 import {
   compareRefs,
-  fetchCodeFrequency,
-  fetchCommitActivity,
   fetchCommitPulls,
-  fetchFollowersPage,
-  fetchFollowingPage,
-  fetchForks,
-  fetchGists,
   fetchPublicEventsPage,
+  fetchCommunityProfile,
+  fetchActionsRuns,
+  fetchPublicGists,
   fetchPublicOrgs,
-  fetchPunchCard,
   fetchRateLimit,
-  fetchReadme,
-  fetchRepo,
-  fetchSbom,
   fetchSubscriptions,
-  fetchUser,
-  fetchUserReposPage,
-  fetchUserStarred,
 } from "./endpoints";
-import { fetchAuthoredIssueResponseHours, fetchGraphQLSummary, fetchRepoIssueSummaries, emptyGraphQLSummary } from "./graphql";
+import { fetchAuthoredIssueResponseHours, fetchProfileCore, fetchRepoIssueSummaries, type ProfileCoreResult } from "./graphql";
 
-async function mapConcurrent<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let currentIndex = 0;
+// ─── Derived statistics computed from GraphQL commit history (replaces /stats/* REST endpoints) ───
 
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (currentIndex < items.length) {
-      const idx = currentIndex++;
-      results[idx] = await fn(items[idx]!, idx);
+interface HistoryNodeLite {
+  oid?: string;
+  messageHeadline?: string;
+  committedDate?: string;
+  authoredDate?: string;
+  additions?: number;
+  deletions?: number;
+  author?: { user?: { login?: string } | null } | null;
+  signature?: { isValid?: boolean } | null;
+  parents?: { totalCount?: number } | null;
+}
+
+const weekStartSec = (iso: string): number | null => {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return null;
+  const date = new Date(time);
+  const sundayUtc = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - date.getUTCDay() * 86_400_000;
+  return sundayUtc / 1_000;
+};
+
+function deriveWeeklySeries(commits: HistoryNodeLite[], ownerLogin: string) {
+  const weekly = new Map<number, { total: number; days: number[]; owner: number }>();
+  const frequency = new Map<number, { additions: number; deletions: number }>();
+  for (const commit of commits) {
+    if (!commit.committedDate) continue;
+    const week = weekStartSec(commit.committedDate);
+    if (week === null) continue;
+    const entry = weekly.get(week) ?? { total: 0, days: [0, 0, 0, 0, 0, 0, 0], owner: 0 };
+    const day = new Date(commit.committedDate).getUTCDay();
+    entry.total += 1;
+    entry.days[day] = (entry.days[day] ?? 0) + 1;
+    if ((commit.author?.user?.login ?? "").toLowerCase() === ownerLogin.toLowerCase()) {
+      entry.owner += 1;
     }
-  });
+    weekly.set(week, entry);
+    const freq = frequency.get(week) ?? { additions: 0, deletions: 0 };
+    freq.additions += Math.max(0, commit.additions ?? 0);
+    freq.deletions += Math.abs(commit.deletions ?? 0);
+    frequency.set(week, freq);
+  }
+  const sortedWeeks = [...weekly.keys()].sort((a, b) => a - b);
+  const commitActivity = sortedWeeks.map((week) => ({ week, total: weekly.get(week)!.total, days: weekly.get(week)!.days }));
+  const codeFrequency = sortedWeeks.map((week) => [week, frequency.get(week)!.additions, frequency.get(week)!.deletions] as [number, number, number]);
+  const last52 = sortedWeeks.slice(-52);
+  const participation = {
+    all: last52.map((week) => weekly.get(week)!.total),
+    owner: last52.map((week) => weekly.get(week)!.owner),
+  };
+  return { commitActivity, codeFrequency, participation };
+}
 
-  await Promise.all(workers);
-  return results;
+function derivePunchCard(commits: HistoryNodeLite[]): Array<[number, number, number]> {
+  const buckets = new Map<number, number>();
+  for (const commit of commits) {
+    if (!commit.committedDate) continue;
+    const date = new Date(commit.committedDate);
+    if (Number.isNaN(date.getTime())) continue;
+    const key = date.getUTCDay() * 24 + date.getUTCHours();
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  return [...buckets.entries()].map(([slot, count]) => [Math.floor(slot / 24), slot % 24, count] as [number, number, number]);
+}
+
+function deriveContributors(commits: HistoryNodeLite[], username: string): Array<{ login?: string; contributions: number }> {
+  const counts = new Map<string, number>();
+  for (const commit of commits) {
+    const login = commit.author?.user?.login;
+    if (!login) continue;
+    counts.set(login, (counts.get(login) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([login, contributions]) => ({ login: login === username ? username : login, contributions }))
+    .sort((a, b) => b.contributions - a.contributions)
+    .slice(0, 100);
 }
 
 interface CollectionMeta {
@@ -86,10 +151,15 @@ const emptySearch = (): SearchSummary => ({
   prsOpened: 0,
   prsMerged: 0,
   prsMergedExternal: 0,
+  prsOpenedExternal: 0,
   issuesOpened: 0,
   issuesClosed: 0,
   authoredIssues: [],
   reviews: 0,
+  discussionsAuthored: 0,
+  discussionsAnswered: 0,
+  commenterEvents: 0,
+  highResonanceIssues: 0,
   caps: [],
 });
 
@@ -99,6 +169,28 @@ const repoRank = (repo: GitHubRepo, now: Date) => {
   const recencyBoost = 30 * Math.exp(-daysSincePush / 180);
   return Math.log1p(repo.stargazers_count) * 18 + Math.log1p(repo.forks_count) * 10 + Math.log1p(repo.size) + recencyBoost;
 };
+
+
+interface PinnedItem { nameWithOwner: string }
+
+async function fetchPinnedEnrichment(client: GitHubClient, pinnedItems: PinnedItem[]): Promise<Record<string, unknown>> {
+  if (!pinnedItems.length) return {};
+  const q = `query {
+    ${pinnedItems
+      .map((p, i) => {
+        const [owner, name] = p.nameWithOwner.split("/");
+        return `
+    pin_${i}: repository(owner:"${owner}", name:"${name}") {
+      description primaryLanguage { name } stargazerCount forkCount pushedAt
+      readme: object(expression:"HEAD:README.md") { ... on Blob { byteSize } }
+      licenseInfo { spdxId }
+      repositoryTopics(first:10) { nodes { topic { name } } }
+    }`;
+      })
+      .join("\n")}
+  }`;
+  return client.graphql(q, {}, "pinned-enrichment");
+}
 
 const recordFailure = (unavailable: Record<string, string>, label: string, error: unknown) => {
   unavailable[label] = error instanceof Error ? error.message : String(error);
@@ -119,42 +211,155 @@ async function safe<T>(
   }
 }
 
-// Edge-compatible base64 decode
-const decodeBase64 = (base64: string): string => {
-  try {
-    const cleaned = base64.replace(/[\n\r\s]/g, "");
-    const binary = atob(cleaned);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder("utf-8").decode(bytes);
-  } catch {
-    return "";
-  }
+const DEPENDENCY_MANIFEST_MATCHERS: Array<[RegExp, string]> = [
+  [/^package\.json$|^yarn\.lock$|^pnpm-lock\.yaml$|^package-lock\.json$/i, "npm"],
+  [/^requirements.*\.txt$|^pyproject\.toml$|^setup\.py$|^Pipfile$|^poetry\.lock$/i, "pip"],
+  [/^go\.(mod|sum|work)$/i, "Go modules"],
+  [/^Cargo\.(toml|lock)$/i, "Cargo"],
+  [/^pom\.xml$|^build\.gradle(\.kts)?$|^gradle\.properties$/i, "Maven/Gradle"],
+  [/^composer\.json$/i, "Packagist"],
+  [/^Gemfile$|\.gemspec$/i, "RubyGems"],
+  [/\.csproj$|\.fsproj$|^nuget\.config$/i, "NuGet"],
+  [/^Package\.swift$|^Podfile$/i, "Swift"],
+  [/^mix\.exs$/i, "Hex"],
+  [/^pubspec\.yaml$/i, "Pub"],
+];
+
+const hashNodeId = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = (Math.imul(hash, 31) + value.charCodeAt(i)) | 0;
+  return Math.abs(hash);
 };
+
+interface RepoListGqlNode {
+  id?: string;
+  name?: string;
+  description?: string | null;
+  isFork?: boolean;
+  diskUsage?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+  pushedAt?: string | null;
+  isArchived?: boolean;
+  isDisabled?: boolean;
+  isTemplate?: boolean;
+  isPrivate?: boolean;
+  homepageUrl?: string | null;
+  hasIssuesEnabled?: boolean;
+  hasWikiEnabled?: boolean;
+  hasDiscussionsEnabled?: boolean;
+  mirrorUrl?: string | null;
+  stargazerCount?: number;
+  forkCount?: number;
+  watchers?: { totalCount?: number };
+  issuesStatesOpen?: { totalCount?: number };
+  primaryLanguage?: { name?: string } | null;
+  licenseInfo?: { spdxId?: string; name?: string } | null;
+  defaultBranchRef?: { name?: string } | null;
+  parent?: { nameWithOwner?: string; defaultBranchRef?: { name?: string } } | null;
+  repositoryTopics?: { nodes?: Array<{ topic?: { name?: string } }> };
+}
+
+const mapRepoListNode = (node: RepoListGqlNode, ownerLogin: string): GitHubRepo | null => {
+  if (!node.name || node.isPrivate) return null;
+  const fullName = `${ownerLogin}/${node.name}`;
+  return {
+    id: hashNodeId(node.id ?? fullName),
+    name: node.name,
+    full_name: fullName,
+    html_url: `https://github.com/${fullName}`,
+    description: node.description ?? null,
+    fork: Boolean(node.isFork),
+    forks_count: node.forkCount ?? 0,
+    stargazers_count: node.stargazerCount ?? 0,
+    watchers_count: node.watchers?.totalCount ?? 0,
+    size: node.diskUsage ?? 0,
+    language: node.primaryLanguage?.name ?? null,
+    topics: (node.repositoryTopics?.nodes ?? []).map((t) => t.topic?.name ?? "").filter(Boolean),
+    created_at: node.createdAt ?? "",
+    updated_at: node.updatedAt ?? "",
+    pushed_at: node.pushedAt ?? null,
+    archived: Boolean(node.isArchived),
+    disabled: Boolean(node.isDisabled),
+    homepage: node.homepageUrl ?? null,
+    has_wiki: Boolean(node.hasWikiEnabled),
+    has_pages: false,
+    has_discussions: Boolean(node.hasDiscussionsEnabled),
+    is_template: Boolean(node.isTemplate),
+    open_issues_count: node.issuesStatesOpen?.totalCount ?? 0,
+    default_branch: node.defaultBranchRef?.name ?? "main",
+    license: node.licenseInfo ? { spdx_id: node.licenseInfo.spdxId ?? "", name: node.licenseInfo.name ?? "" } : null,
+    mirror_url: node.mirrorUrl ?? null,
+    owner: { login: ownerLogin },
+    ...(node.parent ? { parent: { full_name: node.parent.nameWithOwner ?? "", default_branch: node.parent.defaultBranchRef?.name ?? "main" } } : {}),
+  };
+};
+
+const REPO_LIST_PAGE = `
+query RepoListPage($login: String!, $cursor: String) {
+  user(login: $login) {
+    login
+    repositories(first: 100, after: $cursor, ownerAffiliations: [OWNER], orderBy: {field: PUSHED_AT, direction: DESC}) {
+      totalCount
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id name description isFork diskUsage createdAt updatedAt pushedAt
+        isArchived isDisabled isTemplate isPrivate homepageUrl mirrorUrl
+        hasIssuesEnabled hasWikiEnabled hasDiscussionsEnabled
+        stargazerCount forkCount watchers { totalCount }
+        issuesStatesOpen: issues(states: OPEN) { totalCount }
+        primaryLanguage { name }
+        licenseInfo { spdxId name }
+        defaultBranchRef { name }
+        parent { nameWithOwner defaultBranchRef { name } }
+        repositoryTopics(first: 20) { nodes { topic { name } } }
+      }
+    }
+  }
+}`;
 
 async function fetchAllRepos(client: GitHubClient, username: string, unavailable: Record<string, string>) {
   const repos: GitHubRepo[] = [];
-  for (let page = 1; page <= 10; page += 1) {
-    let success = false;
-    let batch: GitHubRepo[] = [];
+  const maxPages = 3;
+  let cursor: string | null = null;
+  let hasNext = true;
+  for (let page = 1; page <= maxPages && hasNext; page += 1) {
     try {
-      const res = await fetchUserReposPage(client, username, page);
-      batch = res.data;
-      success = true;
+      const data: {
+        user: null | {
+          login: string;
+          repositories: {
+            totalCount: number;
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: Array<RepoListGqlNode | null>;
+          } | null;
+        };
+      } = await client.graphql(REPO_LIST_PAGE, { login: username, cursor }, `repo-list-page-${page}`);
+      const connection = data.user?.repositories;
+      if (!connection) break;
+      for (const node of connection.nodes) {
+        if (!node) continue;
+        const mapped = mapRepoListNode({ ...node }, username);
+        if (mapped) {
+          repos.push(mapped);
+        }
+      }
+      hasNext = connection.pageInfo.hasNextPage;
+      cursor = connection.pageInfo.endCursor;
+      if (hasNext && page === maxPages) {
+        unavailable["repos-pagination"] = `Repository listing capped at ${repos.length} items for this run.`;
+      }
     } catch (err) {
       unavailable[`repos-page-${page}`] = err instanceof Error ? err.message : String(err);
       unavailable["repos-incomplete"] = `Repository listing incomplete due to error on page ${page}.`;
       break;
     }
-    repos.push(...batch);
-    if (success && batch.length < 100) break;
   }
-  if (repos.length === 1_000) unavailable["repos-pagination"] = "Repository collection capped at 1,000 items for this run.";
   return repos;
 }
 
 /**
- * Batched GraphQL Search: queries 5 search filters inside 1 single GraphQL call
+ * Batched GraphQL Search: queries 7 search filters inside 1 single GraphQL call
  */
 async function fetchSearchSummary(client: GitHubClient, username: string, unavailable: Record<string, string>): Promise<SearchSummary> {
   const summary = emptySearch();
@@ -162,13 +367,19 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
     query UserSearchCounts(
       $prsQuery: String!
       $prsMergedQuery: String!
-      $prsExternalQuery: String!
+      $prsExternalMergedQuery: String!
+      $prsExternalOpenedQuery: String!
       $issuesQuery: String!
       $issuesClosedQuery: String!
+      $discussionsQuery: String!
+      $discussionsAnsweredQuery: String!
+      $commenterQuery: String!
+      $resonanceQuery: String!
     ) {
       searchPrs: search(query: $prsQuery, type: ISSUE, first: 1) { issueCount }
       searchPrsMerged: search(query: $prsMergedQuery, type: ISSUE, first: 1) { issueCount }
-      searchPrsExternal: search(query: $prsExternalQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsExternalMerged: search(query: $prsExternalMergedQuery, type: ISSUE, first: 1) { issueCount }
+      searchPrsExternalOpened: search(query: $prsExternalOpenedQuery, type: ISSUE, first: 1) { issueCount }
       searchIssues: search(query: $issuesQuery, type: ISSUE, first: 25) {
         issueCount
         nodes {
@@ -180,31 +391,50 @@ async function fetchSearchSummary(client: GitHubClient, username: string, unavai
         }
       }
       searchIssuesClosed: search(query: $issuesClosedQuery, type: ISSUE, first: 1) { issueCount }
+      searchDiscussions: search(query: $discussionsQuery, type: DISCUSSION, first: 1) { issueCount }
+      searchDiscussionsAnswered: search(query: $discussionsAnsweredQuery, type: DISCUSSION, first: 1) { issueCount }
+      searchCommenter: search(query: $commenterQuery, type: ISSUE, first: 1) { issueCount }
+      searchResonance: search(query: $resonanceQuery, type: ISSUE, first: 1) { issueCount }
     }
   `;
   try {
     const data = await client.graphql<{
       searchPrs: { issueCount: number };
       searchPrsMerged: { issueCount: number };
-      searchPrsExternal: { issueCount: number };
+      searchPrsExternalMerged: { issueCount: number };
+      searchPrsExternalOpened: { issueCount: number };
       searchIssues: { issueCount: number; nodes: Array<{ number: number; createdAt: string; repository: { nameWithOwner: string } }> };
       searchIssuesClosed: { issueCount: number };
+      searchDiscussions: { issueCount: number };
+      searchDiscussionsAnswered: { issueCount: number };
+      searchCommenter: { issueCount: number };
+      searchResonance: { issueCount: number };
     }>(
       GQL_SEARCH,
       {
         prsQuery: `author:${username} type:pr`,
         prsMergedQuery: `author:${username} type:pr is:merged`,
-        prsExternalQuery: `author:${username} type:pr is:merged -user:${username}`,
+        prsExternalMergedQuery: `author:${username} type:pr is:merged -user:${username}`,
+        prsExternalOpenedQuery: `author:${username} type:pr -user:${username}`,
         issuesQuery: `author:${username} type:issue`,
         issuesClosedQuery: `author:${username} type:issue is:closed`,
+        discussionsQuery: `author:${username} type:discussion`,
+        discussionsAnsweredQuery: `author:${username} type:discussion is:answered`,
+        commenterQuery: `commenter:${username} -author:${username}`,
+        resonanceQuery: `author:${username} type:issue reactions:>2`,
       },
       "user-search-batch",
     );
     summary.prsOpened = data.searchPrs?.issueCount ?? 0;
     summary.prsMerged = data.searchPrsMerged?.issueCount ?? 0;
-    summary.prsMergedExternal = data.searchPrsExternal?.issueCount ?? 0;
+    summary.prsMergedExternal = data.searchPrsExternalMerged?.issueCount ?? 0;
+    summary.prsOpenedExternal = data.searchPrsExternalOpened?.issueCount ?? 0;
     summary.issuesOpened = data.searchIssues?.issueCount ?? 0;
     summary.issuesClosed = data.searchIssuesClosed?.issueCount ?? 0;
+    summary.discussionsAuthored = data.searchDiscussions?.issueCount ?? 0;
+    summary.discussionsAnswered = data.searchDiscussionsAnswered?.issueCount ?? 0;
+    summary.commenterEvents = data.searchCommenter?.issueCount ?? 0;
+    summary.highResonanceIssues = data.searchResonance?.issueCount ?? 0;
     summary.authoredIssues = (data.searchIssues?.nodes ?? []).map((node) => ({
       repository: node.repository?.nameWithOwner ?? "",
       number: node.number,
@@ -236,13 +466,12 @@ export async function collectEngineData(
   const now = new Date();
   const profile = options.profile ?? {
     id: "deep" as const,
-    label: "Deep",
-    description: "Full deterministic pass with top-8 repositories and batched GraphQL.",
-    expectedCalls: { minimum: 25, maximum: 48 },
-    budget: { rest: 45, graphql: 6, search: 4 },
+    label: "Deep dive",
+    description: "Single full-depth deterministic pass built on batched GraphQL.",
+    expectedCalls: { minimum: 10, maximum: 16 },
+    budget: { rest: 12, graphql: 9, search: 2 },
     repositoryLimit: 8,
-    forkLimit: 4,
-    starRepositoryLimit: 3,
+    forkLimit: 3,
     commitDetailLimit: 100,
   };
   const startedAt = options.startedAt ?? now.getTime();
@@ -282,20 +511,21 @@ export async function collectEngineData(
     const isUserToken = options.authTier === "USER-OAUTH";
     const tokenSource = isUserToken ? "Your linked GitHub account token" : "The server token pool";
     throw new Error(
-      `RATE_LIMIT_DEPLETED: ${tokenSource} has only ${coreRemaining} REST / ${graphqlRemaining} GraphQL calls remaining. ${profile.label} mode requires at least ${minRequiredCore} REST / ${minRequiredGraphql} GraphQL quota. Please try again later or select a lighter mode.`,
+      `RATE_LIMIT_DEPLETED: ${tokenSource} has only ${coreRemaining} REST / ${graphqlRemaining} GraphQL calls remaining. Deep dive mode requires at least ${minRequiredCore} REST / ${minRequiredGraphql} GraphQL quota. Please try again later.`,
     );
   }
 
-  let user;
+  emit("phase", "profile-core", "Loading profile core, contribution calendar, social edges, and search totals in one batched GraphQL call.");
+  let core: ProfileCoreResult;
   try {
-    user = (await fetchUser(client, username)).data;
+    core = await fetchProfileCore(client, username, now);
   } catch (err) {
     if (err instanceof GitHubRequestError && err.status === 404) {
       throw new UserNotFoundError(username);
     }
     throw err;
   }
-  emit("phase", "repository-discovery", "Discovering repositories and ranking the top candidates.");
+  emit("phase", "repository-discovery", "Discovering repositories via paginated GraphQL and ranking the top candidates.");
   const repos = await fetchAllRepos(client, username, unavailable);
   const ranked = [...repos].sort((a, b) => repoRank(b, now) - repoRank(a, now));
   const topRepos = [
@@ -303,29 +533,19 @@ export async function collectEngineData(
     ...ranked.filter((repo) => repo.fork && !repo.disabled),
   ].slice(0, profile.repositoryLimit);
 
-  emit("phase", "public-activity", "Collecting contribution history, public activity, social edges, and search totals.");
-  const [graphql, events, orgs, gists, subscriptions, followers, following, userStarred, profileReadmeRaw, search] = await Promise.all([
-    safe(unavailable, "graphql-summary", emptyGraphQLSummary(), async () => fetchGraphQLSummary(client, username, now)),
+  emit("phase", "public-activity", "Collecting up to 300 public events from the last 30 days, plus organizations, gists, subscriptions, and search totals.");
+  const [eventsP1, eventsP2, eventsP3, orgs, gists, subscriptions, search] = await Promise.all([
     safe(unavailable, "events", [], async () => (await fetchPublicEventsPage(client, username, 1)).data),
-    safe(unavailable, "orgs", [], async () => (await fetchPublicOrgs(client, username)).data),
-    safe(unavailable, "gists", [], async () => (await fetchGists(client, username)).data),
+    safe(unavailable, "events-page-2", [], async () => (await fetchPublicEventsPage(client, username, 2)).data),
+    safe(unavailable, "events-page-3", [], async () => (await fetchPublicEventsPage(client, username, 3)).data),
+    safe(unavailable, "orgs", [] as Array<{ login: string; avatar_url: string }>, async () => (await fetchPublicOrgs(client, username)).data),
+    safe(unavailable, "gists", [] as Array<{ id: string; created_at: string; updated_at: string; comments: number }>, async () => (await fetchPublicGists(client, username)).data),
     safe(unavailable, "subscriptions", [], async () => (await fetchSubscriptions(client, username)).data),
-    safe(unavailable, "followers", [], async () => (await fetchFollowersPage(client, username, 1)).data.map((i) => i.login)),
-    safe(unavailable, "following", [], async () => (await fetchFollowingPage(client, username, 1)).data.map((i) => i.login)),
-    safe(unavailable, "user-starred", [], async () => (await fetchUserStarred(client, username)).data),
-    safe(
-      unavailable,
-      "profile-readme",
-      null as null | { content: string; encoding: string; size: number },
-      async () => (await fetchReadme(client, username, username)).data,
-    ),
     fetchSearchSummary(client, username, unavailable),
   ]);
+  const events = [...eventsP1, ...eventsP2, ...eventsP3].slice(0, 300);
+  const { user, followers, following, summary: graphql, profileReadme } = core;
   search.reviews = graphql.totalPullRequestReviewContributions;
-  let profileReadmeText = "";
-  if (profileReadmeRaw?.encoding === "base64") {
-    profileReadmeText = decodeBase64(profileReadmeRaw.content);
-  }
 
   const languages: EngineData["languages"] = {};
   const releases: EngineData["releases"] = {};
@@ -338,6 +558,8 @@ export async function collectEngineData(
   const contributors: EngineData["contributors"] = {};
   const qualities: EngineData["qualities"] = {};
   const security: EngineData["security"] = {};
+  const commitDetails: Record<string, GitHubCommit> = {};
+  const forks: EngineData["forks"] = {};
 
   emit("phase", "repository-enrichment", `Enriching ${topRepos.length} top repositories with languages, releases, branches, commits, stats, and quality checks.`);
 
@@ -364,6 +586,7 @@ export async function collectEngineData(
                   tagName
                   publishedAt
                   isPrerelease
+                  description
                   releaseAssets(first: 10) {
                     nodes {
                       downloadCount
@@ -371,24 +594,49 @@ export async function collectEngineData(
                   }
                 }
               }
+              tags: refs(refPrefix: "refs/tags/", first: 10) {
+                totalCount
+              }
               branches: refs(refPrefix: "refs/heads/", first: 1) {
                 totalCount
               }
               readme: object(expression: "HEAD:README.md") {
                 ... on Blob { byteSize, text }
               }
+              rootTree: object(expression: "HEAD:") {
+                ... on Tree { entries { name type } }
+              }
+              githubDir: object(expression: "HEAD:.github") {
+                ... on Tree { entries { name } }
+              }
+              contributing: object(expression: "HEAD:CONTRIBUTING.md") { ... on Blob { byteSize } }
+              codeOfConduct: object(expression: "HEAD:CODE_OF_CONDUCT.md") { ... on Blob { byteSize } }
+              securityPolicy: object(expression: "HEAD:SECURITY.md") { ... on Blob { byteSize } }
+              funding: object(expression: "HEAD:.github/FUNDING.yml") { ... on Blob { byteSize } }
+              issueTemplates: object(expression: "HEAD:.github/ISSUE_TEMPLATE") { ... on Tree { entries { name } } }
               ciWorkflows: object(expression: "HEAD:.github/workflows") {
                 ... on Tree { entries { name } }
+              }
+              docsDir: object(expression: "HEAD:docs") { ... on Tree { entries { name } } }
+              recentForks: forks(first: 30, orderBy: {field: CREATED_AT, direction: DESC}) {
+                nodes { name owner { login } pushedAt stargazerCount forkCount createdAt updatedAt }
               }
               defaultBranchRef {
                 target {
                   ... on Commit {
+                    statusCheckRollup { state }
                     history(first: 100) {
+                      totalCount
                       nodes {
                         oid
-                        message
+                        messageHeadline
                         committedDate
+                        authoredDate
+                        additions
+                        deletions
                         author { user { login } }
+                        signature { isValid }
+                        parents(first: 1) { totalCount }
                       }
                     }
                   }
@@ -430,28 +678,105 @@ export async function collectEngineData(
             protected: false,
           }];
 
-          // Quality mapping
+          const rootEntries = d.rootTree?.entries ?? [];
+          const hasDirEntry = (needle: RegExp) => rootEntries.some((entry) => needle.test(entry.name ?? ""));
+          const testsPresent = hasDirEntry(/^(tests?|__tests__|spec)$/i) ||
+            hasDirEntry(/\.(test|spec)\.[jt]sx?$/i) ||
+            hasDirEntry(/^(jest|vitest|karma|cypress|playwright)\.config\./i);
+          const githubDirNames = (d.githubDir?.entries ?? []).map((e) => (e.name ?? "").toLowerCase());
           qualities[key] = {
             readmeBytes: d.readme?.byteSize ?? 0,
             readmeText: d.readme?.text ?? "",
             licensePresent: Boolean(repo.license),
-            testsPresent: false,
+            testsPresent,
             ciPresent: (d.ciWorkflows?.entries?.length ?? 0) > 0,
+            contributingPresent: Boolean(d.contributing) || githubDirNames.some((name) => name.startsWith("contributing")),
+            codeOfConductPresent: Boolean(d.codeOfConduct) || githubDirNames.some((name) => name.startsWith("code_of_conduct")),
+            securityPolicyPresent: Boolean(d.securityPolicy) || githubDirNames.some((name) => name.startsWith("security")),
+            fundingPresent: Boolean(d.funding),
+            issueTemplatesPresent: (d.issueTemplates?.entries?.length ?? 0) > 0 || githubDirNames.some((name) => name.startsWith("issue_template")),
+            docsDirectoryPresent: (d.docsDir?.entries?.length ?? 0) > 0,
           };
 
-          // Commits mapping
           const commitNodes = d.defaultBranchRef?.target?.history?.nodes ?? [];
-          commits[key] = commitNodes.map((cn) => ({
-            sha: cn.oid,
+          const toCommit = (cn: HistoryNodeLite): GitHubCommit => ({
+            sha: cn.oid ?? "",
             html_url: `${repo.html_url}/commit/${cn.oid}`,
             commit: {
-              message: cn.message ?? "",
-              author: { name: cn.author?.user?.login ?? username, date: cn.committedDate ?? "" },
+              message: cn.messageHeadline ?? "",
+              author: { name: cn.author?.user?.login ?? username, date: cn.authoredDate ?? cn.committedDate ?? "" },
               committer: { name: cn.author?.user?.login ?? username, date: cn.committedDate ?? "" },
-              verification: { verified: false, reason: "unsigned" },
+              verification: { verified: Boolean(cn.signature?.isValid), reason: cn.signature?.isValid ? "valid signature" : "unsigned" },
             },
             author: { login: cn.author?.user?.login ?? username },
+            stats: { additions: cn.additions ?? 0, deletions: cn.deletions ?? 0, total: (cn.additions ?? 0) + (cn.deletions ?? 0) },
+            parents: Array.from({ length: Math.min(cn.parents?.totalCount ?? 1, 10) }, (_, idx) => ({ sha: `${cn.oid}-p${idx}` })),
+          });
+          commits[key] = commitNodes.map(toCommit);
+
+          const detailLimit = Math.min(commitNodes.length, profile.commitDetailLimit || 40);
+          for (let ci = 0; ci < detailLimit; ci++) {
+            const cn = commitNodes[ci];
+            if (!cn?.oid) continue;
+            commitDetails[`${key}:${cn.oid}`] = toCommit(cn);
+          }
+
+          const derived = deriveWeeklySeries(commitNodes, username);
+          commitActivity[key] = derived.commitActivity;
+          codeFrequency[key] = derived.codeFrequency;
+          participation[key] = derived.participation;
+          punchCards[key] = derivePunchCard(commitNodes);
+          contributors[key] = deriveContributors(commitNodes, username);
+
+          forks[key] = (d.recentForks?.nodes ?? []).map((fork) => ({
+            id: hashNodeId(`${key}:${fork.name}`),
+            name: fork.name ?? "",
+            full_name: `${fork.owner?.login ?? key.split("/")[0]}/${fork.name}`,
+            html_url: `https://github.com/${fork.owner?.login ?? key.split("/")[0]}/${fork.name}`,
+            description: null,
+            fork: true,
+            forks_count: fork.forkCount ?? 0,
+            stargazers_count: fork.stargazerCount ?? 0,
+            watchers_count: 0,
+            size: 0,
+            language: null,
+            topics: [],
+            created_at: fork.createdAt ?? "",
+            updated_at: fork.updatedAt ?? "",
+            pushed_at: fork.pushedAt ?? null,
+            archived: false,
+            disabled: false,
+            homepage: null,
+            has_wiki: false,
+            has_pages: false,
+            has_discussions: false,
+            is_template: false,
+            open_issues_count: 0,
+            default_branch: "main",
+            license: null,
+            mirror_url: null,
+            owner: { login: fork.owner?.login ?? key.split("/")[0] ?? "" },
           }));
+
+          security[key] = {
+            sbomPackages: [],
+            codeScanning: null,
+            dependabot: null,
+            codeScanningEnabled: false,
+            dependabotEnabled: false,
+            headCiState: d.defaultBranchRef?.target?.statusCheckRollup?.state ?? null,
+            checks: [] as SecuritySummary["checks"],
+            dependencyManifests: rootEntries.reduce<Record<string, number>>((counts, entry) => {
+              const name = entry.name ?? "";
+              for (const [pattern, ecosystem] of DEPENDENCY_MANIFEST_MATCHERS) {
+                if (pattern.test(name)) {
+                  counts[ecosystem] = (counts[ecosystem] ?? 0) + 1;
+                  break;
+                }
+              }
+              return counts;
+            }, {}),
+          };
         });
       } catch (err) {
         recordFailure(unavailable, `repos-batch-${offset}-graphql`, err);
@@ -459,45 +784,9 @@ export async function collectEngineData(
     }),
   );
 
-  // ─── Parallel REST Stats (Only 4 essential statistical endpoints per repo) ───
-  const isQuick = profile.id === "quick";
-  await mapConcurrent(topRepos, 4, async (repo) => {
-    const owner = repo.owner.login;
-    const key = repo.full_name;
-
-    const results = await Promise.all([
-      isQuick
-        ? Promise.resolve([])
-        : safe(unavailable, `${key}-activity`, [], async () => (await fetchCommitActivity(client, owner, repo.name)).data),
-      isQuick
-        ? Promise.resolve([])
-        : safe(unavailable, `${key}-frequency`, [], async () => (await fetchCodeFrequency(client, owner, repo.name)).data),
-      isQuick
-        ? Promise.resolve([])
-        : safe(unavailable, `${key}-punch`, [], async () => (await fetchPunchCard(client, owner, repo.name)).data),
-      safe(unavailable, `${key}-sbom`, null as null | { sbom?: { packages?: SecuritySummary["sbomPackages"] } }, async () => (await fetchSbom(client, owner, repo.name)).data),
-    ]);
-
-    if (!isQuick) {
-      commitActivity[key] = results[0];
-      codeFrequency[key] = results[1];
-      punchCards[key] = results[2];
-    }
-    const sbom = results[3];
-
-    security[key] = {
-      sbomPackages: sbom?.sbom?.packages ?? [],
-      codeScanning: null,
-      dependabot: null,
-      codeScanningEnabled: false,
-      dependabotEnabled: false,
-      checks: (qualities[key]?.ciPresent ? [{ conclusion: "success", status: "completed" }] : []) as SecuritySummary["checks"],
-    };
-  });
-
   sampled["repository-enrichment"] = {
     size: topRepos.length,
-    note: `Moderate repository rules are capped at the top ${profile.repositoryLimit} repositories in ${profile.label.toLowerCase()} mode.`,
+    note: `Moderate repository rules sample the top ${profile.repositoryLimit} repositories ranked by activity and impact.`,
   };
 
   emit("phase", "issue-review-enrichment", "Collecting issue response, review comment, security, and workflow evidence.");
@@ -515,39 +804,48 @@ export async function collectEngineData(
     createdAt: r.occurredAt,
   }));
 
-  emit("phase", "expensive-sampling", "Running bounded fork and commit comparisons.");
-  const forks: EngineData["forks"] = {};
-  const ownReposByForks = repos
-    .filter((repo) => !repo.fork && repo.forks_count > 0)
-    .sort((a, b) => b.forks_count - a.forks_count)
-    .slice(0, profile.forkLimit);
-  await mapConcurrent(ownReposByForks, 4, async (repo) => {
-    forks[repo.full_name] = await safe(
-      unavailable,
-      `${repo.full_name}-forks`,
-      [],
-      async () => (await fetchForks(client, repo.owner.login, repo.name)).data,
-    );
-  });
-  sampled["fork-activity"] = {
-    size: ownReposByForks.length,
-    note: `Fork activity uses the ${profile.forkLimit} most-forked owned repositories.`,
-  };
+  emit("phase", "showcase-integrity", "Enriching pinned repositories and collecting community health plus CI run history for top repositories.");
+  await safe(unavailable, "pinned-enrichment", null as null | Record<string, unknown>, async () => fetchPinnedEnrichment(client, graphql.pinnedItems));
+
+  const ciRepos = topRepos.slice(0, 5);
+  await Promise.all(ciRepos.map(async (repo) => {
+    const communityProfile = await safe(unavailable, `${repo.full_name}-community-profile`, null as null | { health_percentage?: number; files?: { pull_request_template?: unknown; code_of_conduct?: unknown; contributing?: unknown; issue_template?: unknown; license?: unknown; readme?: unknown } }, async () => (await fetchCommunityProfile(client, repo.owner.login, repo.name)).data);
+    if (!security[repo.full_name]) security[repo.full_name] = { sbomPackages: [], codeScanning: null, dependabot: null, codeScanningEnabled: false, dependabotEnabled: false, checks: [] };
+    if (communityProfile) {
+      security[repo.full_name]!.communityHealth = typeof communityProfile.health_percentage === "number" ? communityProfile.health_percentage : null;
+      security[repo.full_name]!.pullRequestTemplatePresent = Boolean(communityProfile.files?.pull_request_template);
+      if (qualities[repo.full_name]) {
+        qualities[repo.full_name]!.contributingPresent = qualities[repo.full_name]!.contributingPresent || Boolean(communityProfile.files?.contributing);
+        qualities[repo.full_name]!.codeOfConductPresent = qualities[repo.full_name]!.codeOfConductPresent || Boolean(communityProfile.files?.code_of_conduct);
+        qualities[repo.full_name]!.issueTemplatesPresent = qualities[repo.full_name]!.issueTemplatesPresent || Boolean(communityProfile.files?.issue_template);
+        if (!qualities[repo.full_name]!.licensePresent && communityProfile.files?.license) qualities[repo.full_name]!.licensePresent = true;
+      }
+    }
+    const runs = await safe(unavailable, `${repo.full_name}-actions-runs`, null as null | { workflow_runs?: Array<{ conclusion?: string | null }> }, async () => (await fetchActionsRuns(client, repo.owner.login, repo.name)).data);
+    if (runs?.workflow_runs) {
+      const completed = runs.workflow_runs.filter((run) => run.conclusion);
+      security[repo.full_name]!.actionsRuns = {
+        total: completed.length,
+        success: completed.filter((run) => run.conclusion === "success").length,
+      };
+    }
+  }));
+
+  emit("phase", "expensive-sampling", "Running bounded fork divergence comparisons.");
 
   const forkComparisons: EngineData["forkComparisons"] = {};
   const contributedForks = repos.filter((repo) => repo.fork).slice(0, profile.forkLimit);
   for (const repo of contributedForks) {
     try {
-      const detail = (await fetchRepo(client, repo.owner.login, repo.name)).data;
-      if (!detail.parent) continue;
-      const [parentOwner, parentName] = detail.parent.full_name.split("/");
+      if (!repo.parent) continue;
+      const [parentOwner, parentName] = repo.parent.full_name.split("/");
       if (!parentOwner || !parentName) continue;
       const comparison = (
         await compareRefs(
           client,
           parentOwner,
           parentName,
-          detail.parent.default_branch,
+          repo.parent.default_branch,
           `${username}:${repo.default_branch}`,
         )
       ).data;
@@ -564,9 +862,6 @@ export async function collectEngineData(
     size: Object.keys(forkComparisons).length,
     note: `Fork divergence checks are capped at ${Math.min(5, profile.forkLimit)} forks.`,
   };
-
-  const stargazers: EngineData["stargazers"] = {};
-  const commitDetails: Record<string, GitHubCommit> = {};
 
   const totalStars = repos
     .filter((repo) => !repo.fork)
@@ -597,12 +892,7 @@ export async function collectEngineData(
       subscriptions,
       followers,
       following,
-      userStarred,
-      profileReadme: {
-        present: Boolean(profileReadmeRaw),
-        bytes: profileReadmeRaw?.size ?? 0,
-        text: profileReadmeText,
-      },
+      profileReadme,
       languages,
       releases,
       branches,
@@ -617,7 +907,6 @@ export async function collectEngineData(
       issues,
       security,
       forks,
-      stargazers,
       forkComparisons,
       authoredIssueResponseHours,
       reviewComments,

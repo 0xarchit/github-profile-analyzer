@@ -13,7 +13,6 @@ export default function Home() {
   const [isHovered, setIsHovered] = useState(false);
   const [versionOpen, setVersionOpen] = useState<"hover" | "click" | null>(null);
   const [engineMode, setEngineMode] = useState<"deterministic" | "legacy">("deterministic");
-  const [deterministicMode, setDeterministicMode] = useState<"quick" | "standard" | "deep">("deep");
   const [isScanning, setIsScanning] = useState(false);
   const router = useRouter();
 
@@ -38,7 +37,7 @@ export default function Home() {
     ) {
       setInputError(null);
       const url = engineMode === "deterministic"
-        ? `/${encodeURIComponent(clean)}?mode=${deterministicMode}`
+        ? `/${encodeURIComponent(clean)}?mode=deep`
         : `/${encodeURIComponent(clean)}?engine=legacy`;
       router.push(url);
     } else {
@@ -186,45 +185,6 @@ export default function Home() {
           </div>
           {engineMode === "deterministic" && user && !user.isGuest && (
             <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 sm:p-4 bg-white border-4 border-black shadow-neo">
-                <div className="text-left">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] sm:text-xs font-heading uppercase font-black text-black">
-                      Scan Depth Protocol
-                    </span>
-                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 bg-neo-yellow border border-black font-black uppercase">
-                      OAuth Linked
-                    </span>
-                  </div>
-                  <p className="text-[9px] sm:text-[10px] font-bold text-black/60">
-                    Select deterministic rule execution intensity for your run.
-                  </p>
-                </div>
-
-                <div className="inline-flex border-2 border-black bg-neo-bg p-1 gap-1 w-full sm:w-auto">
-                  {(["quick", "standard", "deep"] as const).map((mode) => {
-                    const isDeepRestricted = mode === "deep" && Boolean(username.trim() && user?.username && user.username.toLowerCase() !== username.trim().toLowerCase());
-                    return (
-                      <button
-                        key={mode}
-                        type="button"
-                        disabled={isDeepRestricted}
-                        title={isDeepRestricted ? "Deep mode is exclusive to profile owner (capped at standard)" : undefined}
-                        onClick={() => setDeterministicMode(mode)}
-                        className={`flex-1 sm:flex-none px-3 py-1.5 text-[9px] sm:text-[10px] font-heading font-black uppercase transition-all ${
-                          isDeepRestricted
-                            ? "bg-gray-100 text-gray-400 cursor-not-allowed line-through"
-                            : deterministicMode === mode
-                              ? "bg-black text-white shadow-neo-sm"
-                              : "bg-white text-black hover:bg-neo-yellow"
-                        }`}
-                      >
-                        {mode}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {user.rateLimit && (
                 <div className="grid grid-cols-2 gap-3 text-left">
@@ -299,14 +259,14 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setIsScanning(true);
-                  router.push(`/${user.username}${engineMode === "deterministic" ? `?mode=${deterministicMode}` : "?engine=legacy"}`);
+                  router.push(`/${user.username}${engineMode === "deterministic" ? "?mode=deep" : "?engine=legacy"}`);
                 }}
                 className="text-xs font-black uppercase flex items-center gap-2 hover:text-neo-pink hover:border-neo-pink transition-colors tracking-widest group border-b-2 border-black pb-1"
               >
                 <div className="p-1 border-2 border-black group-hover:bg-neo-pink group-hover:border-neo-pink transition-colors">
                   <User className="w-4 h-4" />
                 </div>
-                Analyze Internal Profile ({deterministicMode.toUpperCase()})
+                Analyze Internal Profile (Deep Dive)
               </button>
               <div className="hidden sm:block w-px h-8 bg-black/10" />
               <div className="text-xs font-black uppercase flex items-center gap-2 opacity-50">

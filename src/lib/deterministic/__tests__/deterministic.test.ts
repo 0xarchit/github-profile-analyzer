@@ -65,7 +65,6 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
     subscriptions: [],
     followers: [],
     following: [],
-    userStarred: [],
     profileReadme: { present: true, bytes: 500, text: "# Hello" },
     events: [],
     repos: [flagshipRepo],
@@ -73,6 +72,9 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
     graphql: {
       totalContributions: 450,
       restrictedContributionsCount: 0,
+      totalCommitContributions: 320,
+      previousYearTotalContributions: 210,
+      sponsoringLogins: [],
       totalPullRequestReviewContributions: 12,
       totalPullRequestContributions: 35,
       totalIssueContributions: 18,
@@ -103,6 +105,11 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
       issuesClosed: 14,
       authoredIssues: [],
       reviews: 12,
+      discussionsAuthored: 0,
+      discussionsAnswered: 0,
+      commenterEvents: 4,
+      highResonanceIssues: 1,
+      prsOpenedExternal: 6,
       caps: [],
     },
     commits: {
@@ -159,6 +166,12 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
         licensePresent: true,
         testsPresent: true,
         ciPresent: true,
+        contributingPresent: true,
+        codeOfConductPresent: false,
+        securityPolicyPresent: false,
+        fundingPresent: false,
+        issueTemplatesPresent: false,
+        docsDirectoryPresent: false,
       },
     },
     security: {
@@ -170,9 +183,6 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
         dependabot: [],
         checks: [{ status: "completed", conclusion: "success" }],
       },
-    },
-    stargazers: {
-      "testdev/flagship-repo": [{ user: { login: "admirer" }, starred_at: "2026-07-01T00:00:00Z" }],
     },
     contributors: {
       "testdev/flagship-repo": [{ login: "testdev", contributions: 100 }],
@@ -192,31 +202,16 @@ function createMockEngineData(overrides: Partial<EngineData> = {}): EngineData {
 }
 
 describe("Deterministic Engine Mode Profiles & Budgets", () => {
-  it("enforces strict budget ceiling on quick mode", () => {
-    const profile = getAnalysisModeProfile("quick");
-    expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.quick.budget.rest);
-    expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.quick.budget.graphql);
-    expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.quick.budget.search);
-    expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.quick.repositoryLimit);
-    expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.quick.forkLimit);
-  });
-
-  it("allocates standard mode budget for deep repos", () => {
-    const profile = getAnalysisModeProfile("standard");
-    expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.standard.budget.rest);
-    expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.standard.budget.graphql);
-    expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.standard.budget.search);
-    expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.standard.repositoryLimit);
-    expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.standard.forkLimit);
-  });
-
-  it("allocates deep mode budget for full scans", () => {
+  it("uses a single deep-dive profile with a strict subrequest ceiling", () => {
     const profile = getAnalysisModeProfile("deep");
     expect(profile.budget.rest).toBe(ANALYSIS_MODE_PROFILES.deep.budget.rest);
     expect(profile.budget.graphql).toBe(ANALYSIS_MODE_PROFILES.deep.budget.graphql);
     expect(profile.budget.search).toBe(ANALYSIS_MODE_PROFILES.deep.budget.search);
     expect(profile.repositoryLimit).toBe(ANALYSIS_MODE_PROFILES.deep.repositoryLimit);
     expect(profile.forkLimit).toBe(ANALYSIS_MODE_PROFILES.deep.forkLimit);
+
+    const totalWorstCase = profile.budget.rest + profile.budget.graphql + profile.budget.search;
+    expect(totalWorstCase).toBeLessThanOrEqual(50);
   });
 });
 

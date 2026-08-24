@@ -47,10 +47,8 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showStarModal, setShowStarModal] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isVerifyingAgain, setIsVerifyingAgain] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<AnalysisMode>(initialData?.meta?.analysisMode || "deep");
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [progress, setProgress] = useState<AnalysisProgressEvent[]>([]);
   const [currentPhase, setCurrentPhase] = useState("");
@@ -72,7 +70,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   }, []);
 
   const fetchData = useCallback(
-    async (force = false, modeToUse: AnalysisMode = selectedMode) => {
+    async (force = false, modeToUse: AnalysisMode = "deep") => {
       try {
         const prev = esRef.current;
         esRef.current = null;
@@ -157,7 +155,7 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
         setError("NETWORK_FAILURE");
       }
     },
-    [username, selectedMode],
+    [username],
   );
 
   const invalidUsername = !username || username.toLowerCase() === "undefined" || username.toLowerCase() === "null";
@@ -172,11 +170,9 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
 
     void fetchAuthIdentity()
       .then((identity) => {
-        setIsLoggedIn(Boolean(identity?.username));
         setIsOwner(identity?.username?.toLowerCase() === safeUsername);
       })
       .catch(() => {
-        setIsLoggedIn(false);
         setIsOwner(false);
       });
 
@@ -209,20 +205,6 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
     } finally {
       setIsVerifyingAgain(false);
     }
-  };
-
-  const handleModeChange = (newMode: AnalysisMode) => {
-    setStatusNotice(null);
-    if (!isLoggedIn && newMode !== "quick") {
-      router.push("/api/auth/github");
-      return;
-    }
-    if (!isOwner && newMode === "deep") {
-      setStatusNotice("Deep mode is reserved for analyzing your own authenticated profile.");
-      return;
-    }
-    setSelectedMode(newMode);
-    void fetchData(true, newMode);
   };
 
   const toggleSignal = useCallback((id: string) => {
@@ -325,35 +307,12 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
   const { scores, interpretation: interp, charts } = data;
   const isHistorical = data.isHistorical;
   const isProfileLocked = data.isLocked;
-  const effectiveMode = (data?.meta?.analysisMode ?? selectedMode) as AnalysisMode;
+  const effectiveMode = (data?.meta?.analysisMode ?? "deep") as AnalysisMode;
 
   return (
     <main className="min-h-screen" style={{ background: "#fdfcf0", color: "#000000" }}>
       <Header>
         <div className="flex items-center gap-3">
-          {/* Mode Selector */}
-          <div className="hidden sm:flex items-center bg-white border-2 border-black p-0.5 rounded-lg text-xs font-bold">
-            {(["quick", "standard", "deep"] as AnalysisMode[]).map((mode) => {
-              const isActive = effectiveMode === mode;
-              const isLockedMode = !isLoggedIn && mode !== "quick";
-              return (
-                <button
-                  type="button"
-                  key={mode}
-                  onClick={() => handleModeChange(mode)}
-                  className={`px-3 py-1 uppercase rounded transition-all flex items-center gap-1 ${
-                    isActive
-                      ? "bg-black text-white"
-                      : "hover:bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {isLockedMode && <Lock className="w-3 h-3 text-neo-pink" />}
-                  {mode}
-                </button>
-              );
-            })}
-          </div>
-
           {(isOwner || !isProfileLocked) && (
             <button
               type="button"

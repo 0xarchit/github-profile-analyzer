@@ -27,7 +27,7 @@ export function OverviewTab({ data }: { data: EngineResult }) {
         <h2 className="text-lg font-heading text-black mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-cyan-700" /> Score Breakdown</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {Object.values(sc.breakdown).filter((r) => r.id !== "2.7" && typeof r.value === "number").map((r) => (
-            <ScoreCard key={r.id} label={r.name.replace(/ score$/i, "")} value={r.value as number} weight={sc.weights[r.id] ?? 0} grade={ip.grades.find((g) => g.id === r.id)?.grade} />
+            <ScoreCard key={r.id} label={r.name.replace(/ score$/i, "")} value={r.value as number} weight={sc.weights[r.id] ?? 0} grade={ip.grades.find((g) => g.id === r.id)?.grade} rule={r} />
           ))}
           <div className="rounded-xl p-4" style={{ background: "#fef9c3", border: "3px solid black" }}>
             <div className="text-[10px] font-heading uppercase text-yellow-600 mb-1">Auth Multiplier</div>

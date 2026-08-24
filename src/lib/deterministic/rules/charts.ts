@@ -100,7 +100,7 @@ export const rule4_1ContributionCalendar: ChartRule = (data) => {
 export const rule4_2CommitActivity: ChartRule = (data) => {
   const weeks = new Map<number, number>();
   for (const items of Object.values(data.commitActivity)) for (const item of items) weeks.set(item.week, (weeks.get(item.week) ?? 0) + item.total);
-  return sampledChart("4.2", "Commit activity over time", "line", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, commits]) => ({ week: new Date(week * 1_000).toISOString(), commits })), "Aggregated 52-week commit activity from sampled repositories.", "stats/commit_activity", Object.keys(data.commitActivity).length, "Stats exclude merge commits and cover the last 52 weeks.");
+  return sampledChart("4.2", "Commit activity over time", "line", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, commits]) => ({ week: new Date(week * 1_000).toISOString(), commits })), "Aggregated weekly commit activity from sampled repositories.", "derived from GraphQL default-branch history", Object.keys(data.commitActivity).length, "Derived from the most recent 100 default-branch commits per sampled repository, including merge commits.");
 };
 
 export const rule4_3CodeFrequency: ChartRule = (data) => {
@@ -111,11 +111,11 @@ export const rule4_3CodeFrequency: ChartRule = (data) => {
     current.deletions += Math.abs(deletions);
     weeks.set(week, current);
   }
-  return sampledChart("4.3", "Additions vs deletions", "diverging-bar", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, value]) => ({ week: new Date(week * 1_000).toISOString(), ...value })), "Weekly additions and deletions across sampled repositories.", "stats/code_frequency", Object.keys(data.codeFrequency).length, "Repositories with 10,000+ commits can return 422 and are omitted as unavailable.");
+  return sampledChart("4.3", "Additions vs deletions", "diverging-bar", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, value]) => ({ week: new Date(week * 1_000).toISOString(), ...value })), "Weekly additions and deletions across sampled repositories.", "derived from GraphQL per-commit additions/deletions", Object.keys(data.codeFrequency).length, "Derived from the most recent 100 commits per sampled repository.");
 };
 
 export const rule4_4PunchCard: ChartRule = (data) =>
-  sampledChart("4.4", "Punch card", "heatmap", punchMatrix(data).flat(), "Day-of-week by UTC hour activity matrix.", "stats/punch_card", Object.keys(data.punchCards).length, "GitHub does not document the exact stats cache window; label as approximately the last year.");
+  sampledChart("4.4", "Punch card", "heatmap", punchMatrix(data).flat(), "Day-of-week by UTC hour activity matrix.", "derived from GraphQL commit timestamps", Object.keys(data.punchCards).length, "Covers only commits inside the fetched 100-commit window per repository.");
 
 export const rule4_5LanguageDistribution: ChartRule = (data) => {
   const totals = cachedLanguageTotals(data);
@@ -324,21 +324,6 @@ export const rule4_25TrafficViews: ChartRule = () =>
 export const rule4_26TrafficReferrers: ChartRule = () =>
   chart(oauthOnly("4.26", "Top referrers and paths", "GET /repos/{o}/{r}/traffic/popular/*"), "bar");
 
-const ecosystemFromPurl = (value: string) => {
-  const match = value.match(/^pkg:([^/]+)/);
-  return match?.[1] ?? "unknown";
-};
-
-export const rule4_27DependencyEcosystems: ChartRule = (data) => {
-  const counts: Record<string, number> = {};
-  for (const security of Object.values(data.security)) for (const pkg of security.sbomPackages) {
-    const purl = pkg.externalRefs?.find((reference) => reference.referenceType?.toLowerCase().includes("purl"))?.referenceLocator;
-    const ecosystem = purl ? ecosystemFromPurl(purl) : "unknown";
-    counts[ecosystem] = (counts[ecosystem] ?? 0) + 1;
-  }
-  return sampledChart("4.27", "Dependency ecosystems", "donut", Object.entries(counts).map(([ecosystem, value]) => ({ ecosystem, value })), "SPDX SBOM packages grouped by package URL ecosystem.", "dependency-graph/sbom", Object.keys(data.security).length, "Top repositories only; SBOM packages are a current snapshot.");
-};
-
 export const rule4_28SecuritySeverities: ChartRule = () =>
   chart(
     unavailable(
@@ -350,7 +335,6 @@ export const rule4_28SecuritySeverities: ChartRule = () =>
     "donut",
   );
 
-// Single filter+collect pass instead of .filter().map().sort() triple pass.
 export const rule4_29LorenzCurve: ChartRule = (data) => {
   const stars: number[] = [];
   for (const repo of data.repos) if (!repo.fork) stars.push(repo.stargazers_count);
@@ -398,49 +382,50 @@ export const rule4_32OrgTimeline: ChartRule = (data) => {
   return chart(ok("4.32", "Organization membership timeline", events, "Best-effort public organization membership changes between local analyses.", "public orgs + internal snapshots"), "timeline");
 };
 
-export const chartRules: ChartRule[] = [
-  rule4_1ContributionCalendar,
-  rule4_2CommitActivity,
-  rule4_3CodeFrequency,
-  rule4_4PunchCard,
-  rule4_5LanguageDistribution,
-  rule4_6RepoSizeStars,
-  rule4_7StreakTimeline,
-  rule4_8BurstOverlay,
-  rule4_9PrIssueFunnel,
-  rule4_10CollaboratorNetwork,
-  rule4_11RepoCreationTimeline,
-  rule4_12WeekendSplit,
-  rule4_13ScoreRadar,
-  rule4_14LeaderboardPercentiles,
-  rule4_15CumulativeStars,
-  rule4_16StarVelocity,
-  rule4_17PrMergeHistogram,
-  rule4_18IssueResponseHistogram,
-  rule4_19CommitSizeHistogram,
-  rule4_20ContributionSplit,
-  rule4_21CommitHourUtcAware,
-  rule4_22EventMix,
-  rule4_23FollowerGrowth,
-  rule4_24ReleaseStarOverlay,
-  rule4_25TrafficViews,
-  rule4_26TrafficReferrers,
-  rule4_27DependencyEcosystems,
-  rule4_28SecuritySeverities,
-  rule4_29LorenzCurve,
-  rule4_30RepoLifetimeGantt,
-  rule4_31LanguageRepoHeatmap,
-  rule4_32OrgTimeline,
+// Explicit ID pairs keep fallback error IDs stable when rules are added or removed.
+const CHART_RULE_ENTRIES: Array<[string, ChartRule]> = [
+  ["4.1", rule4_1ContributionCalendar],
+  ["4.2", rule4_2CommitActivity],
+  ["4.3", rule4_3CodeFrequency],
+  ["4.4", rule4_4PunchCard],
+  ["4.5", rule4_5LanguageDistribution],
+  ["4.6", rule4_6RepoSizeStars],
+  ["4.7", rule4_7StreakTimeline],
+  ["4.8", rule4_8BurstOverlay],
+  ["4.9", rule4_9PrIssueFunnel],
+  ["4.10", rule4_10CollaboratorNetwork],
+  ["4.11", rule4_11RepoCreationTimeline],
+  ["4.12", rule4_12WeekendSplit],
+  ["4.13", rule4_13ScoreRadar],
+  ["4.14", rule4_14LeaderboardPercentiles],
+  ["4.15", rule4_15CumulativeStars],
+  ["4.16", rule4_16StarVelocity],
+  ["4.17", rule4_17PrMergeHistogram],
+  ["4.18", rule4_18IssueResponseHistogram],
+  ["4.19", rule4_19CommitSizeHistogram],
+  ["4.20", rule4_20ContributionSplit],
+  ["4.21", rule4_21CommitHourUtcAware],
+  ["4.22", rule4_22EventMix],
+  ["4.23", rule4_23FollowerGrowth],
+  ["4.24", rule4_24ReleaseStarOverlay],
+  ["4.25", rule4_25TrafficViews],
+  ["4.26", rule4_26TrafficReferrers],
+  ["4.28", rule4_28SecuritySeverities],
+  ["4.29", rule4_29LorenzCurve],
+  ["4.30", rule4_30RepoLifetimeGantt],
+  ["4.31", rule4_31LanguageRepoHeatmap],
+  ["4.32", rule4_32OrgTimeline],
 ];
+
+export const chartRules: ChartRule[] = CHART_RULE_ENTRIES.map(([, rule]) => rule);
 
 export const runChartRules = (data: EngineData, scores: ScoresOutput) =>
   Object.fromEntries(
-    chartRules.map((rule, idx) => {
+    CHART_RULE_ENTRIES.map(([ruleId, rule]) => {
       try {
         const result = rule(data, scores);
         return [result.id, result];
       } catch (err) {
-        const ruleId = `4.${idx + 1}`;
         return [
           ruleId,
           chart(

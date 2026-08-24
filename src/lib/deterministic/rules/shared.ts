@@ -1,4 +1,4 @@
-import type { ChartKind, ChartResult, CostTier, RuleResult, RuleStatus, SignalResult } from "../types";
+import type { ChartKind, ChartResult, CostTier, RuleResult, RuleStatus, ScoreFactor, SignalResult } from "../types";
 
 export const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 export const round = (value: number, digits = 2) => Number(value.toFixed(digits));
@@ -108,6 +108,8 @@ export const ok = <T>(
   cost,
   ...(details ? { details } : {}),
 });
+export const withFactors = <T>(result: RuleResult<T>, factors: ScoreFactor[], remediation?: string): RuleResult<T> =>
+  ({ ...result, factors, ...(remediation ? { remediation } : {}) });
 export const withStatus = <T>(
   id: string,
   name: string,
