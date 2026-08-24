@@ -178,11 +178,13 @@ If this project helped you, here are two ways to give back:
     <th>Contributing</th>
     <th>Security</th>
     <th>License</th>
+    <th>Support</th>
   </tr>
   <tr>
     <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/CONTRIBUTING.md">Guidelines</a></td>
     <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/SECURITY.md">Policy</a></td>
     <td><a href="https://github.com/0xarchit/github-profile-analyzer/blob/main/LICENSE">MIT</a></td>
+    <td><a href="https://github.com/0xarchit/github-profile-analyzer/issues">Issues</a></td>
   </tr>
 </table>
 

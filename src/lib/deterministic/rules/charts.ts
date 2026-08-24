@@ -100,7 +100,7 @@ export const rule4_1ContributionCalendar: ChartRule = (data) => {
 export const rule4_2CommitActivity: ChartRule = (data) => {
   const weeks = new Map<number, number>();
   for (const items of Object.values(data.commitActivity)) for (const item of items) weeks.set(item.week, (weeks.get(item.week) ?? 0) + item.total);
-  return sampledChart("4.2", "Commit activity over time", "line", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, commits]) => ({ week: new Date(week * 1_000).toISOString(), commits })), "Aggregated weekly commit activity from sampled repositories.", "derived from GraphQL default-branch history", Object.keys(data.commitActivity).length, "Stats exclude merge commits and cover the last 52 weeks.");
+  return sampledChart("4.2", "Commit activity over time", "line", [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, commits]) => ({ week: new Date(week * 1_000).toISOString(), commits })), "Aggregated weekly commit activity from sampled repositories.", "derived from GraphQL default-branch history", Object.keys(data.commitActivity).length, "Derived from the most recent 100 default-branch commits per sampled repository, including merge commits.");
 };
 
 export const rule4_3CodeFrequency: ChartRule = (data) => {

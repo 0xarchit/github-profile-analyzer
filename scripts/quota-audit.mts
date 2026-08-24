@@ -55,9 +55,10 @@ async function gql<T>(query: string, variables: Record<string, unknown>, label: 
 
 interface RepoLite { name: string; ownerLogin: string; stars: number; forks: number; pushedAt: string; isFork: boolean; parent?: { nameWithOwner: string; defaultBranch: string }; }
 
-async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }> {
+async function probeRepoList(): Promise<{ repos: RepoLite[]; forks: RepoLite[]; pagesUsed: number }> {
   console.log("\n[repo-list] paginated GraphQL repository discovery");
   const repos: RepoLite[] = [];
+  const forks: RepoLite[] = [];
   let cursor: string | null = null;
   let pagesUsed = 0;
   for (let page = 1; page <= 3; page += 1) {
@@ -78,7 +79,8 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }
     const conn = data?.user?.repositories;
     if (!conn) break;
     for (const n of conn.nodes) {
-      if (n && !n.isFork && !n.isPrivate) repos.push({
+      if (!n || n.isPrivate) continue;
+      const entry: RepoLite = {
         name: n.name,
         ownerLogin: n.owner.login,
         stars: n.stargazerCount,
@@ -88,12 +90,14 @@ async function probeRepoList(): Promise<{ repos: RepoLite[]; pagesUsed: number }
         parent: n.parent?.nameWithOwner && n.parent.defaultBranchRef?.name
           ? { nameWithOwner: n.parent.nameWithOwner, defaultBranch: n.parent.defaultBranchRef.name }
           : undefined,
-      });
+      };
+      if (n.isFork) forks.push(entry);
+      else repos.push(entry);
     }
     if (!conn.pageInfo.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
   }
-  return { repos: repos.slice(0, REPO_LIMIT), pagesUsed };
+  return { repos: repos.slice(0, REPO_LIMIT), forks, pagesUsed };
 }
 
 async function probeProfileCoreV3(): Promise<void> {
@@ -334,7 +338,7 @@ async function main() {
   console.log(`\n=== GitScore QUOTA AUDIT :: ${username} ===\n`);
 
   await rest("https://api.github.com/rate_limit", "rate-limit probe");
-  const { repos, pagesUsed } = await probeRepoList();
+  const { repos, forks, pagesUsed } = await probeRepoList();
   console.log(`  -> ${repos.length} non-fork repos sampled (${pagesUsed} page request(s))\n`);
 
   await probeProfileCoreV3();
@@ -344,7 +348,7 @@ async function main() {
   await probePinnedEnrichment();
   await probeAuthoredIssueResponses();
 
-  const contributedForks = repos.filter((r) => r.isFork);
+  const contributedForks = forks;
   const forkReqUsed = await probeRestAddons(repos, contributedForks);
 
   const totalThisRun = restUsed + gqlUsed;
