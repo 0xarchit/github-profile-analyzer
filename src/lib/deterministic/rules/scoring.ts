@@ -110,25 +110,71 @@ export const rule2_3CollaborationScore: ScoreRule = (data) => {
 };
 
 export const rule2_4ImpactScore: ScoreRule = (data) => {
-  const values = reposWith(data).map((repo) => {
-    const recency = repo.pushed_at ? Math.exp(-daysBetween(repo.pushed_at, data.now) / 1_095) : 0.1;
-    return (Math.log1p(repo.stargazers_count) * 8 + Math.log1p(repo.forks_count) * 5) * recency;
-  });
-  const total = values.reduce((sum, value) => sum + value, 0);
-  const value = saturatingScore(total, 0.055);
   const ranked = reposWith(data)
-    .map((repo, index) => ({ repo, points: values[index] ?? 0 }))
+    .map((repo) => {
+      const releases = data.releases[repo.full_name] ?? [];
+      const downloads = releases
+        .flatMap((release) => release.assets ?? [])
+        .reduce((sum, asset) => sum + (asset?.download_count ?? 0), 0);
+      const quality = data.qualities[repo.full_name];
+      const qualitySignals = quality
+        ? [quality.readmeBytes > 300, quality.licensePresent, quality.ciPresent, quality.testsPresent].filter(Boolean).length
+        : 0;
+
+      // Adoption still matters, but stars/forks are no longer the dominant evidence.
+      const adoption = saturatingScore(
+        Math.log1p(repo.stargazers_count) * 4 + Math.log1p(repo.forks_count) * 2,
+        0.12,
+      );
+      const releaseEvidence = releases.length > 0 ? 20 : 0;
+      const downloadEvidence = saturatingScore(downloads, 0.01) * 0.3;
+      const homepageEvidence = repo.homepage?.trim() ? 10 : 0;
+      const qualityEvidence = (qualitySignals / 4) * 30;
+      const evidence = releaseEvidence + downloadEvidence + homepageEvidence + qualityEvidence;
+
+      const recency = repo.pushed_at
+        ? Math.exp(-daysBetween(repo.pushed_at, data.now) / 1_095)
+        : 0.1;
+      const points = (adoption * 0.35 + evidence * 0.65) * recency;
+
+      return {
+        repo,
+        points,
+        adoption,
+        evidence,
+        releases: releases.length,
+        downloads,
+        qualitySignals,
+      };
+    })
     .sort((a, b) => b.points - a.points);
+
+  const total = ranked.reduce((sum, item) => sum + item.points, 0);
+  const value = total > 0 ? Math.min(100, total) : 0;
+
   return finishScore(
     "2.4",
     "Impact score",
-    "Recency-weighted stars and forks from non-fork repositories.",
-    "GET /users/{u}/repos",
-    ranked.slice(0, 5).map(({ repo, points }) =>
-      factor(`${repo.name}`, `${repo.stargazers_count} stars · ${repo.forks_count} forks`, value * ratio(points, Math.max(total, Number.MIN_VALUE)), 100),
+    "Recency-weighted project impact using adoption plus independent evidence of shipping and usage.",
+    "GET /users/{u}/repos + releases + repository quality",
+    ranked.slice(0, 5).map(({ repo, points, adoption, evidence, releases, downloads, qualitySignals }) =>
+      factor(
+        repo.name,
+        `adoption ${round(adoption)} · evidence ${round(evidence)} · ${releases} releases · ${downloads} downloads · ${qualitySignals}/4 quality signals`,
+        value * ratio(points, Math.max(total, Number.MIN_VALUE)),
+        100,
+      ),
     ),
-    total === 0 ? "Earn stars by publishing useful, well-documented projects and sharing them." : undefined,
-    { repositories: values.length, rawImpact: round(total, 3) },
+    total === 0
+      ? "Publish useful projects and add verifiable evidence of usage such as releases, a project homepage, release downloads, and basic repository hygiene."
+      : undefined,
+    {
+      repositories: ranked.length,
+      rawImpact: round(total, 3),
+      adoptionWeight: 0.35,
+      evidenceWeight: 0.65,
+      evidenceSignals: ["releases", "release downloads", "homepage", "README", "license", "CI", "tests"],
+    },
   );
 };
 
