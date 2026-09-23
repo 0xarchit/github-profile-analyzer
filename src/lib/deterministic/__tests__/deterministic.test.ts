@@ -262,6 +262,29 @@ describe("Deterministic Scoring Rules", () => {
     expect(score.details?.evidenceWeight).toBe(0.65);
   });
 
+  it("allocates impact factors to repositories beyond the first five", () => {
+    const base = createMockEngineData();
+    const repos = Array.from({ length: 6 }, (_, index) => ({
+      ...flagshipRepo,
+      id: 101 + index,
+      name: `repo-${index + 1}`,
+      full_name: `testdev/repo-${index + 1}`,
+      stargazers_count: 10 + index,
+      forks_count: 2,
+    }));
+    const score = rule2_4ImpactScore({
+      ...base,
+      repos,
+      topRepos: repos,
+      releases: {},
+      qualities: {},
+    });
+
+    expect(score.details?.repositories).toBe(6);
+    expect(score.factors).toHaveLength(6);
+    expect(score.factors?.map((item) => item.label)).toContain("repo-6");
+  });
+
   it("calculates authenticity multiplier with minimum floor of 0.4", () => {
     const data = createMockEngineData();
     const signals = runSignalRules(data);
