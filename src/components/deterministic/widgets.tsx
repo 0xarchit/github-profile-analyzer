@@ -54,9 +54,13 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
 
   useEffect(() => {
     if (openState === null) return;
-    const onResize = () => updatePlacement();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const onViewportChange = () => updatePlacement();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, { capture: true });
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, { capture: true });
+    };
   }, [openState]);
 
   useEffect(() => {
