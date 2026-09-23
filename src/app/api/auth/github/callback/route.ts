@@ -5,8 +5,6 @@ import { createSession } from "@/lib/auth";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
 import { UsernameSchema } from "@/lib/validation";
 
-export const runtime = "edge";
-
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";

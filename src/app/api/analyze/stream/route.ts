@@ -6,7 +6,9 @@ import { getSession } from "@/lib/auth";
 import { getCachedData, setCachedData, deleteCachedData } from "@/lib/redis";
 import { getUserByUsername, getUserByGithubId, insertAnalytics } from "@/lib/db";
 
-export const runtime = "edge";
+// SSE must stream incrementally — see the deterministic stream route. Without
+// this, Next's Node runtime buffers the whole GET-route response.
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

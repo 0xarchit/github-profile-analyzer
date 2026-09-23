@@ -10,8 +10,6 @@ import {
 } from "@/lib/db";
 import { deleteCachedData } from "@/lib/redis";
 
-export const runtime = "edge";
-
 const SettingsSchema = z.object({
   profile_locked: z.boolean().optional(),
   keep_history: z.boolean().optional(),

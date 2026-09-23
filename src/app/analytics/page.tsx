@@ -11,7 +11,11 @@ export const metadata: Metadata = {
     "Live protocol telemetry — public token usage and request analytics for GitHub Profile Analyzer.",
 };
 
-export const runtime = "edge";
+// This page reads Redis (no-store) on every request. Opting out of static
+// prerendering stops Next from attempting it at build time, which throws
+// DYNAMIC_SERVER_USAGE inside the Redis call and was being logged (and
+// Telegram-alerted) as a cache failure.
+export const dynamic = "force-dynamic";
 
 const ANALYTICS_CACHE_KEY = "analytics:summary";
 

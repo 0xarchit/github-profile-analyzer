@@ -15,9 +15,6 @@ import {
   insertAnalytics,
 } from "@/lib/db";
 
-// Node runtime replaced with Edge runtime for next-on-pages builder compatibility
-export const runtime = "edge";
-
 const ANALYTICS_CACHE_KEY = "analytics:summary";
 
 type AnalyzedPayload = ValidatedAnalysisResult & {

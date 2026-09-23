@@ -3,8 +3,6 @@ import { getScanById, getUserById, getUserByGithubId } from "@/lib/db";
 import { getSession, getGuestSession } from "@/lib/auth";
 import { checkStarStatus } from "@/lib/github";
 
-export const runtime = "edge";
-
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },

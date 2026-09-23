@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { normalizeUsername, TARGET_REPO } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { deleteCachedData } from "@/lib/redis";
-
-export const runtime = "edge";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getD1Binding(): any {
   if (process.env.DB) return process.env.DB;
   try {
-    const ctx = getRequestContext();
+    const ctx = getCloudflareContext();
     const env = ctx?.env as { DB?: unknown } | undefined;
     return env?.DB ?? null;
   } catch {

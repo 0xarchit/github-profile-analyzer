@@ -15,7 +15,11 @@ import {
 } from "@/lib/db";
 import { UsernameSchema } from "@/lib/validation";
 
-export const runtime = "edge";
+// SSE must stream incrementally. Without this, Next's Node runtime applies
+// GET-route static optimisation to the handler (removing `runtime = "edge"`
+// re-enabled it), buffering the whole body so no `progress` events reach the
+// client until the run finishes.
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
