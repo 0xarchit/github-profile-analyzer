@@ -53,10 +53,10 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
   };
 
   useEffect(() => {
-    if (!visible) return;
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    return () => window.removeEventListener("resize", updatePlacement);
+    if (openState === null) return;
+    const onResize = () => updatePlacement();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [openState]);
 
   useEffect(() => {
