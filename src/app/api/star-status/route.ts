@@ -3,8 +3,6 @@ import { getSession } from "@/lib/auth";
 import { checkStarStatus, getRepoStarCount } from "@/lib/github";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
 
-export const runtime = "edge";
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const repoOnly = searchParams.get("repoOnly") === "true";

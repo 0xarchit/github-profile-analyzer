@@ -16,8 +16,6 @@ import {
 } from "@/lib/db";
 import { UsernameSchema } from "@/lib/validation";
 
-export const runtime = "edge";
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const usernameParam = searchParams.get("username");

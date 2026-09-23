@@ -4,8 +4,6 @@ import { getSession, getGuestSession } from "@/lib/auth";
 import { checkStarStatus, fetchGitHubGraphQL, getFallbackToken } from "@/lib/github";
 import { getCachedData, setCachedData } from "@/lib/redis";
 
-export const runtime = "edge";
-
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

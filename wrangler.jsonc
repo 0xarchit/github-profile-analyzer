@@ -1,0 +1,46 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "github-profile-analyzer",
+	"compatibility_date": "2026-09-23",
+	// nodejs_compat is REQUIRED: OpenNext's runtime init imports node:async_hooks,
+	// node:process and node:stream. Without it the Worker fails to boot.
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding. This name must match "name" above.
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "github-profile-analyzer"
+		}
+	],
+	// Required at runtime: read by src/lib/github/star-gate.ts and
+	// src/app/api/webhooks/github-star/route.ts via process.env.DB /
+	// getCloudflareContext().env.DB. Without a real binding, star tracking
+	// silently no-ops (the code returns early when the binding is absent).
+	// Replace these two values with your real ones — run `npx wrangler d1 list`
+	// (after `wrangler login`) or copy them from the D1 page of the dashboard.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "github-profile-analyzer",
+			"database_id": "03356bb5-e61c-4577-b1a0-bdc416d4228e"
+		}
+	],
+	// No r2_buckets: this app has no ISR or on-demand revalidation (verified — no
+	// revalidate/revalidatePath/revalidateTag anywhere in src/). If ISR is added,
+	// add the NEXT_INC_CACHE_R2_BUCKET binding here and wire r2IncrementalCache
+	// into open-next.config.ts. See https://opennext.js.org/cloudflare/caching
+	"images": {
+		// next/image is used in src/components/Header.tsx
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"observability": {
+		"enabled": true
+	}
+}

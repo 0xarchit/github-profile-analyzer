@@ -13,7 +13,7 @@
 
 import { getCachedData, setCachedData } from "@/lib/redis";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   getFallbackToken,
   fetchGitHubGraphQL,
@@ -86,7 +86,7 @@ function toErrorMessage(error: unknown): string {
 function getD1Binding(): any {
   if (process.env.DB) return process.env.DB;
   try {
-    const ctx = getRequestContext();
+    const ctx = getCloudflareContext();
     const env = ctx?.env as { DB?: unknown } | undefined;
     return env?.DB ?? null;
   } catch {

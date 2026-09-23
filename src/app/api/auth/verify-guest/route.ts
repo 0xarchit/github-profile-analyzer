@@ -3,8 +3,6 @@ import { verifyAndInjectStar } from "@/lib/github";
 import { createGuestSession } from "@/lib/auth";
 import { sendTelegramAlert } from "@/lib/telegram-alert";
 
-export const runtime = "edge";
-
 export async function POST(request: Request) {
   try {
     const { username } = await request.json();

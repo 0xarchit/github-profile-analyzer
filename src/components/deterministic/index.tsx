@@ -180,6 +180,14 @@ export function DeterministicProfileClient({ username, initialData }: Props) {
       initialLoadInitiatedRef.current = safeUsername;
       void fetchData();
     }
+
+    // Strict Mode (dev-only, on by default in the App Router) mounts, unmounts,
+    // then remounts. The unmount closes the EventSource, so this guard must be
+    // cleared too — otherwise the remount skips fetchData() and the analysis
+    // stream is never reopened, leaving the UI on "Initializing" forever.
+    return () => {
+      initialLoadInitiatedRef.current = null;
+    };
   }, [username, invalidUsername, initialData, fetchData]);
 
   useEffect(() => {

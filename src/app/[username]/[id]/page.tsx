@@ -11,8 +11,6 @@ import { getSession } from "@/lib/auth";
 import { AnalysisResult } from "@/types";
 import type { StoredEngineResult } from "@/lib/deterministic";
 
-export const runtime = "edge";
-
 export async function generateMetadata({
   params,
 }: {

@@ -2,8 +2,6 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { UsernameSchema } from "@/lib/validation";
 
-export const runtime = "edge";
-
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const REDIRECT_URI = `${APP_URL}/api/auth/github/callback`;
