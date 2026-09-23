@@ -157,7 +157,7 @@ export const rule2_4ImpactScore: ScoreRule = (data) => {
     "Impact score",
     "Recency-weighted project impact using adoption plus independent evidence of shipping and usage.",
     "GET /users/{u}/repos + releases + repository quality",
-    ranked.slice(0, 5).map(({ repo, points, adoption, evidence, releases, downloads, qualitySignals }) =>
+    ranked.map(({ repo, points, adoption, evidence, releases, downloads, qualitySignals }) =>
       factor(
         repo.name,
         `adoption ${round(adoption)} · evidence ${round(evidence)} · ${releases} releases · ${downloads} downloads · ${qualitySignals}/4 quality signals`,
