@@ -82,7 +82,7 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
         <div
           ref={popRef}
           id={tooltipId}
-          className={`absolute z-50 top-full mt-2 w-80 max-w-[calc(100vw-16px)] p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${align === "right" ? "right-0" : "left-0"}`}
+          className={`absolute z-50 top-full mt-2 w-80 max-w-[calc(100vw-16px)] max-h-72 overflow-y-auto overscroll-contain p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${align === "right" ? "right-0" : "left-0"}`}
           style={{ background: "#fffef5", border: "3px solid black", boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)" }}
           role="tooltip"
         >
