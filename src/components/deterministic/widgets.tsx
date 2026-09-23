@@ -30,17 +30,38 @@ function FactorBar({ item }: { item: ScoreFactor }) {
 export function FactorTooltip({ rule, className, style, children }: { rule: RuleResult; className?: string; style?: React.CSSProperties; children?: React.ReactNode }) {
   const [openState, setOpenState] = useState<"hover" | "click" | null>(null);
   const [align, setAlign] = useState<"left" | "right">("left");
+  const [placement, setPlacement] = useState<"top" | "bottom">("bottom");
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
   const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const tooltipId = useId();
 
   const POPOVER_WIDTH = 336; // w-80 + border
+  const POPOVER_GAP = 8;
 
-  const updateAlign = () => {
+  const updatePlacement = () => {
     const rect = wrapRef.current?.getBoundingClientRect();
     if (!rect) return;
+
     setAlign(rect.left + POPOVER_WIDTH > window.innerWidth - 8 ? "right" : "left");
+
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - POPOVER_GAP);
+    const spaceAbove = Math.max(0, rect.top - POPOVER_GAP);
+    const useBelow = spaceBelow >= Math.min(spaceAbove, 288);
+    setPlacement(useBelow ? "bottom" : "top");
+    setMaxHeight(Math.max(0, useBelow ? spaceBelow : spaceAbove));
   };
+
+  useEffect(() => {
+    if (openState === null) return;
+    const onViewportChange = () => updatePlacement();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, { capture: true });
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, { capture: true });
+    };
+  }, [openState]);
 
   useEffect(() => {
     if (openState !== "click") return;
@@ -54,7 +75,7 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      updateAlign();
+      updatePlacement();
       setOpenState((state) => (state === "click" ? null : "click"));
     } else if (event.key === "Escape") {
       setOpenState(null);
@@ -72,9 +93,9 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
       aria-describedby={visible ? tooltipId : undefined}
       className={`relative group cursor-pointer ${className ?? ""}`}
       style={style}
-      onMouseEnter={() => { if (openState !== "click") { updateAlign(); setOpenState("hover"); } }}
+      onMouseEnter={() => { if (openState !== "click") { updatePlacement(); setOpenState("hover"); } }}
       onMouseLeave={() => { if (openState !== "click") setOpenState(null); }}
-      onClick={(e) => { e.stopPropagation(); updateAlign(); setOpenState(openState === "click" ? null : "click"); }}
+      onClick={(e) => { e.stopPropagation(); updatePlacement(); setOpenState(openState === "click" ? null : "click"); }}
       onKeyDown={onKeyDown}
     >
       {children}
@@ -82,8 +103,8 @@ export function FactorTooltip({ rule, className, style, children }: { rule: Rule
         <div
           ref={popRef}
           id={tooltipId}
-          className={`absolute z-50 top-full mt-2 w-80 max-w-[calc(100vw-16px)] p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${align === "right" ? "right-0" : "left-0"}`}
-          style={{ background: "#fffef5", border: "3px solid black", boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)" }}
+          className={`absolute z-50 w-80 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain p-4 space-y-2.5 rounded-lg text-left animate-in fade-in duration-150 ${placement === "top" ? "bottom-full mb-2" : "top-full mt-2"} ${align === "right" ? "right-0" : "left-0"}`}
+          style={{ maxHeight, background: "#fffef5", border: "3px solid black", boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)" }}
           role="tooltip"
         >
           <div className="flex items-center justify-between gap-2">

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getAnalysisModeProfile, ANALYSIS_MODE_PROFILES } from "../engine";
 import { runBaselineRules } from "../rules/baseline";
-import { runScoringRules, rule2_7AuthenticityMultiplier } from "../rules/scoring";
+import { runScoringRules, rule2_4ImpactScore, rule2_7AuthenticityMultiplier } from "../rules/scoring";
 import { runSignalRules } from "../rules/signals";
 import { runChartRules } from "../rules/charts";
 import { runInterpretation, gradeForScore, interpretE3WorkRhythm, interpretE6Momentum } from "../interpretation";
@@ -225,6 +225,64 @@ describe("Deterministic Scoring Rules", () => {
       .filter(([id]) => id !== "2.7")
       .reduce((a, [, w]) => a + w, 0);
     expect(Math.abs(totalWeight - 1.0)).toBeLessThan(0.0001);
+  });
+
+  it("keeps impact score from depending on stars and forks alone", () => {
+    const base = createMockEngineData();
+    const evidenceRichRepo: GitHubRepo = {
+      ...flagshipRepo,
+      name: "evidence-rich",
+      full_name: "testdev/evidence-rich",
+      stargazers_count: 0,
+      forks_count: 0,
+      homepage: "https://example.com/evidence-rich",
+    };
+    const score = rule2_4ImpactScore({
+      ...base,
+      repos: [evidenceRichRepo],
+      topRepos: [evidenceRichRepo],
+      releases: {
+        "testdev/evidence-rich": [
+          { tag_name: "v1.0.0", published_at: "2026-08-01T00:00:00Z", prerelease: false, assets: [{ download_count: 100 }] },
+        ],
+      },
+      qualities: {
+        "testdev/evidence-rich": {
+          ...base.qualities["testdev/flagship-repo"]!,
+          readmeBytes: 1000,
+          licensePresent: true,
+          ciPresent: true,
+          testsPresent: true,
+        },
+      },
+    });
+
+    expect(score.value).toBeGreaterThan(0);
+    expect(score.details?.adoptionWeight).toBe(0.35);
+    expect(score.details?.evidenceWeight).toBe(0.65);
+  });
+
+  it("allocates impact factors to repositories beyond the first five", () => {
+    const base = createMockEngineData();
+    const repos = Array.from({ length: 6 }, (_, index) => ({
+      ...flagshipRepo,
+      id: 101 + index,
+      name: `repo-${index + 1}`,
+      full_name: `testdev/repo-${index + 1}`,
+      stargazers_count: 10 + index,
+      forks_count: 2,
+    }));
+    const score = rule2_4ImpactScore({
+      ...base,
+      repos,
+      topRepos: repos,
+      releases: {},
+      qualities: {},
+    });
+
+    expect(score.details?.repositories).toBe(6);
+    expect(score.factors).toHaveLength(6);
+    expect(score.factors?.map((item) => item.label)).toContain("repo-6");
   });
 
   it("calculates authenticity multiplier with minimum floor of 0.4", () => {
