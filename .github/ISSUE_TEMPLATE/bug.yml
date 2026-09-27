@@ -1,8 +1,7 @@
 name: Bug Report
-about: Report a bug to help us improve
+description: Report a bug to help us improve
 title: '[BUG] '
 labels: bug
-assignees: ''
 body:
   - type: textarea
     attributes:
