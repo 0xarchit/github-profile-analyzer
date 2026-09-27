@@ -1,0 +1,37 @@
+name: Feature Request
+about: Suggest an idea for this project
+title: '[FEATURE] '
+labels: enhancement
+assignees: ''
+body:
+  - type: textarea
+    attributes:
+      label: Is your feature request related to a problem?
+      description: Description of the problem you're trying to solve
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Describe the Solution
+      description: Clear description of what you want to happen
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Describe Alternatives Considered
+      description: Description of alternative solutions you've considered
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, mock-ups, or examples
+    validations:
+      required: false
+  - type: checkboxes
+    attributes:
+      label: Priority
+      options:
+        - label: Low
+        - label: Medium
+        - label: High
