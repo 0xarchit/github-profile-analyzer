@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: mailto:mail@0xarchit.is-a.dev
+    about: Report a security vulnerability privately via email, as described in our Security Policy.
+  - name: Question or Discussion
+    url: https://github.com/0xarchit/github-profile-analyzer/discussions
+    about: Ask a question or start a discussion about the project.
