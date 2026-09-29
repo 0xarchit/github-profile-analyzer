@@ -333,10 +333,15 @@ describe("Deterministic Scoring Rules", () => {
     const scores = runScoringRules(newcomer, runSignalRules(newcomer));
 
     for (const id of ["2.13", "2.14"]) {
-      for (const item of scores.breakdown[id]!.factors ?? []) {
+      const rule = scores.breakdown[id]!;
+      const factors = rule.factors ?? [];
+      expect(factors.length).toBeGreaterThan(0);
+      for (const item of factors) {
         expect(item.earned).toBeLessThanOrEqual(item.max);
       }
-      expect(scores.breakdown[id]!.value).toBeLessThan(100);
+      // A month-old account with a single external merged PR must not saturate either score.
+      expect(rule.value as number).toBeLessThan(60);
+      expect(rule.value as number).toBeCloseTo(factors.reduce((sum, item) => sum + item.earned, 0), 1);
     }
   });
 
