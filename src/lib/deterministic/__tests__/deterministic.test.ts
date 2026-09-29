@@ -345,6 +345,24 @@ describe("Deterministic Scoring Rules", () => {
     }
   });
 
+  it("scales longevity factors without previous-year data", () => {
+    const base = createMockEngineData();
+    const data = createMockEngineData({
+      graphql: {
+        ...base.graphql,
+        previousYearTotalContributions: null,
+        contributionYears: [2026],
+      },
+    });
+    const rule = runScoringRules(data, runSignalRules(data)).breakdown["2.14"]!;
+    const factors = rule.factors ?? [];
+
+    expect(factors).toHaveLength(3);
+    for (const item of factors) {
+      expect(item.earned).toBeLessThanOrEqual(item.max);
+    }
+  });
+
   it("produces valid finalScore in the range [0, 100]", () => {
     const data = createMockEngineData();
     const signals = runSignalRules(data);
