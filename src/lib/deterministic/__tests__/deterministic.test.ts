@@ -323,6 +323,23 @@ describe("Deterministic Scoring Rules", () => {
     expect(authResult.value).toBe(0.88);
   });
 
+  it("scales giving-back and longevity factors to their published maximums", () => {
+    const base = createMockEngineData();
+    const newcomer = createMockEngineData({
+      user: { ...base.user, created_at: "2026-07-20T00:00:00Z" },
+      search: { ...base.search, prsMergedExternal: 1, prsOpenedExternal: 1, authoredIssues: [] },
+      graphql: { ...base.graphql, contributionYears: [2026], repositoriesContributedToCount: 1, sponsoringCount: 0 },
+    });
+    const scores = runScoringRules(newcomer, runSignalRules(newcomer));
+
+    for (const id of ["2.13", "2.14"]) {
+      for (const item of scores.breakdown[id]!.factors ?? []) {
+        expect(item.earned).toBeLessThanOrEqual(item.max);
+      }
+      expect(scores.breakdown[id]!.value).toBeLessThan(100);
+    }
+  });
+
   it("produces valid finalScore in the range [0, 100]", () => {
     const data = createMockEngineData();
     const signals = runSignalRules(data);

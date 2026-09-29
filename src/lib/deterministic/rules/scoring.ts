@@ -424,10 +424,10 @@ export const rule2_12SecurityHygieneScore: ScoreRule = (data) => {
 
 export const rule2_13GivingBackScore: ScoreRule = (data) => {
   const externalIssues = data.search.authoredIssues.filter((item) => !item.repository.toLowerCase().startsWith(`${data.username.toLowerCase()}/`)).length;
-  const externalPrPoints = saturatingScore(data.search.prsMergedExternal, 0.08) * 35;
-  const externalIssuePoints = saturatingScore(externalIssues, 0.12) * 20;
-  const contributedPoints = saturatingScore(data.graphql.repositoriesContributedToCount, 0.1) * 25;
-  const sponsorPoints = saturatingScore(data.graphql.sponsoringCount, 0.2) * 20;
+  const externalPrPoints = saturatingScore(data.search.prsMergedExternal, 0.08) * 0.35;
+  const externalIssuePoints = saturatingScore(externalIssues, 0.12) * 0.2;
+  const contributedPoints = saturatingScore(data.graphql.repositoriesContributedToCount, 0.1) * 0.25;
+  const sponsorPoints = saturatingScore(data.graphql.sponsoringCount, 0.2) * 0.2;
   return finishScore(
     "2.13",
     "Giving-back score",
@@ -456,14 +456,14 @@ export const rule2_14LongevityScore: ScoreRule = (data) => {
     : null;
   const factors: ScoreFactor[] = yoyDeltaPercentValue === null
     ? [
-        factor("Account age", `${Math.round(accountYears * 10) / 10} years`, saturatingScore(accountYears, 0.22) * 40, 40),
-        factor("Active years", `${activeYears} years with contributions`, saturatingScore(activeYears, 0.45) * 30, 30),
-        factor("Year-round activity", `${round(activeRatio * 100, 1)}% of days active`, activeRatio * 100 * 30, 30),
+        factor("Account age", `${Math.round(accountYears * 10) / 10} years`, saturatingScore(accountYears, 0.22) * 0.4, 40),
+        factor("Active years", `${activeYears} years with contributions`, saturatingScore(activeYears, 0.45) * 0.3, 30),
+        factor("Year-round activity", `${round(activeRatio * 100, 1)}% of days active`, activeRatio * 100 * 0.3, 30),
       ]
     : [
-        factor("Account age", `${Math.round(accountYears * 10) / 10} years`, saturatingScore(accountYears, 0.22) * 28, 28),
-        factor("Active years", `${activeYears} years with contributions`, saturatingScore(activeYears, 0.45) * 22, 22),
-        factor("Year-round activity", `${round(activeRatio * 100, 1)}% of days active`, activeRatio * 100 * 20, 20),
+        factor("Account age", `${Math.round(accountYears * 10) / 10} years`, saturatingScore(accountYears, 0.22) * 0.28, 28),
+        factor("Active years", `${activeYears} years with contributions`, saturatingScore(activeYears, 0.45) * 0.22, 22),
+        factor("Year-round activity", `${round(activeRatio * 100, 1)}% of days active`, activeRatio * 100 * 0.2, 20),
         factor("Year-over-year momentum", `${data.graphql.totalContributions} vs ${previousYearTotal} (${yoyDeltaPercentValue >= 0 ? "+" : ""}${yoyDeltaPercentValue}%)`, clamp(50 + yoyDeltaPercentValue / 2) * 0.3, 30),
       ];
   return finishScore(
