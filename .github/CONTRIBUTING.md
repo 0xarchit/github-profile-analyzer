@@ -44,11 +44,11 @@ bun run build
 
 ## Reporting Bugs
 
-Use the Bug Report template in `.github/ISSUE_TEMPLATE/bug.md`
+Use the Bug Report template in `.github/ISSUE_TEMPLATE/bug.yml`
 
 ## Suggesting Features
 
-Use the Feature Request template in `.github/ISSUE_TEMPLATE/feature_request.md`
+Use the Feature Request template in `.github/ISSUE_TEMPLATE/feature_request.yml`
 
 ## Questions?
 
