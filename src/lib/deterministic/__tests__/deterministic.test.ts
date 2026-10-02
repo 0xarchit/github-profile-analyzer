@@ -323,6 +323,46 @@ describe("Deterministic Scoring Rules", () => {
     expect(authResult.value).toBe(0.88);
   });
 
+  it("scales giving-back and longevity factors to their published maximums", () => {
+    const base = createMockEngineData();
+    const newcomer = createMockEngineData({
+      user: { ...base.user, created_at: "2026-07-20T00:00:00Z" },
+      search: { ...base.search, prsMergedExternal: 1, prsOpenedExternal: 1, authoredIssues: [] },
+      graphql: { ...base.graphql, contributionYears: [2026], repositoriesContributedToCount: 1, sponsoringCount: 0 },
+    });
+    const scores = runScoringRules(newcomer, runSignalRules(newcomer));
+
+    for (const id of ["2.13", "2.14"]) {
+      const rule = scores.breakdown[id]!;
+      const factors = rule.factors ?? [];
+      expect(factors.length).toBeGreaterThan(0);
+      for (const item of factors) {
+        expect(item.earned).toBeLessThanOrEqual(item.max);
+      }
+      // A month-old account with a single external merged PR must not saturate either score.
+      expect(rule.value as number).toBeLessThan(60);
+      expect(rule.value as number).toBeCloseTo(factors.reduce((sum, item) => sum + item.earned, 0), 1);
+    }
+  });
+
+  it("scales longevity factors without previous-year data", () => {
+    const base = createMockEngineData();
+    const data = createMockEngineData({
+      graphql: {
+        ...base.graphql,
+        previousYearTotalContributions: null,
+        contributionYears: [2026],
+      },
+    });
+    const rule = runScoringRules(data, runSignalRules(data)).breakdown["2.14"]!;
+    const factors = rule.factors ?? [];
+
+    expect(factors).toHaveLength(3);
+    for (const item of factors) {
+      expect(item.earned).toBeLessThanOrEqual(item.max);
+    }
+  });
+
   it("produces valid finalScore in the range [0, 100]", () => {
     const data = createMockEngineData();
     const signals = runSignalRules(data);
